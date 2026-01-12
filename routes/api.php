@@ -7,8 +7,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\WishlistController;
-
-
+use App\Http\Controllers\Admin\AdminUserController;
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -20,7 +19,9 @@ use App\Http\Controllers\WishlistController;
 |
 */
 
-// Rutas de productos (Públicas)
+// RUTAS PÚBLICAS
+
+// Rutas de productos
 // El orden es importante: las rutas específicas primero
 Route::get('/products/home', [ProductController::class, 'homeProducts']); // Novedades para la Home
 Route::get('/products/featured', [ProductController::class, 'featuredProducts']); // Destacados random
@@ -30,14 +31,14 @@ Route::get('/products/{id}', [ProductController::class, 'show'])->whereNumber('i
 Route::get('/products/top-purchased', [ProductController::class, 'topPurchased']);
 Route::get('/products/top-wishlisted', [ProductController::class, 'topWishlisted']);
 
-// Rutas de autenticación (Públicas)
+// Rutas de autenticación
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 
-//Rutas de contacto
+// Rutas de contacto
 Route::post('/contact', [ContactController::class, 'send']);
 
-// Rutas protegidas (Requieren Login)
+// RUTAS PROTEGIDAS (CLIENTE)
 Route::middleware('auth:sanctum')->group(function () {
 
     // Cerrar sesión
@@ -53,15 +54,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/wishlist', [WishlistController::class, 'store']);
     Route::delete('/wishlist/{product_id}', [WishlistController::class, 'destroy'])->whereNumber('product_id');
 
-    // TPV
+    // TPV - Inicio de pago
     Route::post('/checkout/start', function (Request $request) {
 
-        // De momento lo dejamos simple: amount por request (luego será el total del carrito/pedido)
+        // De momento lo dejamos simple: amount por request
         $amount = $request->input('amount', 49.99);
 
-        // Callback real (la que ya funciona)
         $callbackUrl = $request->getSchemeAndHttpHost() . '/api/checkout/callback';
-
         $tpvBase = rtrim(env('TPV_BASE_URL'), '/');
         $apiKey  = env('TPV_API_KEY');
 
@@ -73,7 +72,6 @@ Route::middleware('auth:sanctum')->group(function () {
             'callbackUrl' => $callbackUrl,
         ]);
 
-        // Si falla, devolvemos el error tal cual para depurar
         if (!$resp->successful()) {
             return response()->json([
                 'error' => 'Error iniciando pago en TPV',
@@ -82,12 +80,11 @@ Route::middleware('auth:sanctum')->group(function () {
             ], 500);
         }
 
-        // Aquí normalmente vendrán token + paymentUrl
         return response()->json($resp->json(), 200);
     });
 });
 
-
+// CALLBACKS TPV (PÚBLICAS O MIXTAS)
 Route::get('/checkout/callback', function (Request $request) {
 
     $token = $request->query('token');
@@ -113,7 +110,7 @@ Route::get('/checkout/callback', function (Request $request) {
     $finalStatus = $body['status'] ?? 'UNKNOWN';
     $failureReason = $body['failureReason'] ?? null;
 
-    // Ruta de frontend (SPA). Importante: NO /api
+    // Ruta de frontend (SPA)
     $frontendUrl = $request->getSchemeAndHttpHost()
         . '/pago/resultado?token=' . urlencode($token)
         . '&status=' . urlencode($finalStatus)
@@ -136,4 +133,35 @@ Route::get('/tpv/verify/{token}', function (string $token) {
     ])->get($tpvBase . '/api/v1/payments/verify/' . $token);
 
     return response()->json($resp->json(), $resp->status());
+});
+
+// GRUPO DE RUTAS DE ADMINISTRADOR
+Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function () {
+
+    // Dashboard Stats
+    Route::get('/stats', function() {
+        return response()->json([
+            'users_count' => \App\Models\User::count(),
+            'orders_count' => \App\Models\Order::count(),
+            // Sumamos el subtotal de todos los pedidos para saber el ingreso bruto
+            'revenue'     => \App\Models\Order::sum('subtotal'),
+            'products_count' => \App\Models\Product::count(),
+            'reviews_count' => \App\Models\Review::count(),
+        ]);
+    });
+
+    // GESTIÓN DE USUARIOS
+    Route::get('/users', [AdminUserController::class, 'index']);
+    Route::put('/users/{id}', [AdminUserController::class, 'update']);
+    Route::post('/users', [AdminUserController::class, 'store']);
+    Route::patch('/users/{id}/toggle-active', [AdminUserController::class, 'toggleActive']);
+    Route::delete('/users/{id}', [AdminUserController::class, 'destroy']);
+
+    // GESTIÓN DE PRODUCTOS
+    Route::get('/products', [\App\Http\Controllers\Admin\AdminProductController::class, 'index']);
+    Route::get('/products/form-data', [\App\Http\Controllers\Admin\AdminProductController::class, 'formData']);
+    Route::delete('/products/{id}', [\App\Http\Controllers\Admin\AdminProductController::class, 'destroy']);
+    Route::post('/products', [\App\Http\Controllers\Admin\AdminProductController::class, 'store']);
+    Route::get('/products/{id}', [\App\Http\Controllers\Admin\AdminProductController::class, 'show']); // Para editar
+    Route::post('/products/{id}', [\App\Http\Controllers\Admin\AdminProductController::class, 'update']);
 });

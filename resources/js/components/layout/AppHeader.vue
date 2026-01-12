@@ -120,17 +120,31 @@
                     <v-list elevation="3" rounded="lg" class="mt-2" min-width="200">
                         <div class="px-4 py-2 bg-grey-lighten-4 mb-2">
                             <div class="text-caption text-medium-emphasis">Conectado como</div>
-                            <div class="text-body-2 font-weight-bold text-truncate">{{ auth.user.email }}</div>
+                            <div class="text-body-2 font-weight-bold text-truncate">
+                                {{ auth.user?.email }}
+                            </div>
                         </div>
 
                         <v-list-item to="/profile" prepend-icon="mdi-account-outline" title="Mi Perfil" />
                         <v-list-item to="/wishlist" prepend-icon="mdi-heart-outline" title="Wishlist" />
                         <v-list-item to="/orders" prepend-icon="mdi-package-variant-closed" title="Mis Pedidos" />
 
+                        <v-list-item
+                            v-if="auth.user?.is_admin"
+                            to="/admin/dashboard"
+                            prepend-icon="mdi-view-dashboard"
+                            title="Panel Admin"
+                            color="primary"
+                        />
+
                         <v-divider class="my-2" />
 
-                        <v-list-item @click="handleLogout" prepend-icon="mdi-logout" title="Cerrar Sesión"
-                            color="error" />
+                        <v-list-item
+                            @click="handleLogout"
+                            prepend-icon="mdi-logout"
+                            title="Cerrar Sesión"
+                            color="error"
+                        />
                     </v-list>
                 </v-menu>
             </div>

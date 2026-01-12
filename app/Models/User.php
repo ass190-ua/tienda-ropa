@@ -19,6 +19,7 @@ class User extends Authenticatable
         'password',
         'is_admin',
         'address_id',
+        'is_active',
     ];
 
     protected $hidden = [
@@ -30,7 +31,7 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'is_admin' => 'boolean',
     ];
-    
+
     public function addresses()
     {
         return $this->hasMany(Address::class);
