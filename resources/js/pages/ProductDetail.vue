@@ -1,253 +1,357 @@
 <template>
-    <v-container class="py-10">
-        <!-- Breadcrumbs -->
-        <v-breadcrumbs :items="breadcrumbs" class="px-0 mb-4">
-            <template #divider>
-                <v-icon size="16" class="mx-2">mdi-chevron-right</v-icon>
-            </template>
-        </v-breadcrumbs>
+  <v-container class="py-10">
+    <!-- Breadcrumbs -->
+    <v-breadcrumbs :items="breadcrumbs" class="px-0 mb-4">
+      <template #divider>
+        <v-icon size="16" class="mx-2">mdi-chevron-right</v-icon>
+      </template>
+    </v-breadcrumbs>
 
-        <!-- Loading -->
-        <div v-if="loading">
-            <v-row dense>
-                <v-col cols="12" md="6">
-                    <v-skeleton-loader type="image" height="520" rounded="xl" />
-                    <v-skeleton-loader class="mt-4" type="chip@6" />
-                </v-col>
-                <v-col cols="12" md="6">
-                    <v-skeleton-loader type="heading, paragraph, paragraph, button" />
-                    <v-skeleton-loader class="mt-4" type="text@6" />
-                </v-col>
-            </v-row>
+    <!-- Loading -->
+    <div v-if="loading">
+      <v-row dense>
+        <v-col cols="12" md="6">
+          <v-skeleton-loader type="image" height="520" rounded="xl" />
+          <v-skeleton-loader class="mt-4" type="chip@6" />
+        </v-col>
+        <v-col cols="12" md="6">
+          <v-skeleton-loader type="heading, paragraph, paragraph, button" />
+          <v-skeleton-loader class="mt-4" type="text@6" />
+        </v-col>
+      </v-row>
+    </div>
+
+    <!-- Not found -->
+    <v-alert
+      v-else-if="notFound"
+      type="info"
+      variant="tonal"
+      rounded="xl"
+      class="mb-6"
+    >
+      <div class="d-flex flex-column ga-3">
+        <div>
+          <div class="text-h6 font-weight-bold">Producto no encontrado</div>
+          <div class="text-body-2 text-medium-emphasis">
+            No existe un producto con ID: <b>{{ productId }}</b>
+          </div>
         </div>
 
-        <!-- Not found -->
-        <v-alert v-else-if="notFound" type="info" variant="tonal" rounded="xl" class="mb-6">
-            <div class="d-flex flex-column ga-3">
-                <div>
-                    <div class="text-h6 font-weight-bold">Producto no encontrado</div>
-                    <div class="text-body-2 text-medium-emphasis">
-                        No existe un producto con ID: <b>{{ productId }}</b>
-                    </div>
-                </div>
-
-                <div class="d-flex flex-wrap ga-3">
-                    <v-btn color="primary" @click="router.push('/shop')">Volver a tienda</v-btn>
-                    <v-btn variant="outlined" @click="router.back()">Atrás</v-btn>
-                </div>
-            </div>
-        </v-alert>
-
-        <!-- Error -->
-        <v-alert v-else-if="error" type="error" variant="tonal" rounded="xl" class="mb-6">
-            <div class="d-flex flex-column ga-3">
-                <div>
-                    <div class="text-h6 font-weight-bold">Error al cargar el producto</div>
-                    <div class="text-body-2 text-medium-emphasis">
-                        Inténtalo de nuevo en unos segundos.
-                    </div>
-                </div>
-
-                <div class="d-flex flex-wrap ga-3">
-                    <v-btn color="primary" @click="fetchProduct()">Reintentar</v-btn>
-                    <v-btn variant="outlined" @click="router.back()">Atrás</v-btn>
-                </div>
-            </div>
-        </v-alert>
-
-        <!-- Content -->
-        <div v-else-if="product">
-            <v-row dense>
-                <!-- Gallery -->
-                <v-col cols="12" md="6">
-                    <v-card rounded="xl" variant="outlined" class="overflow-hidden">
-                        <v-img :src="images[activeImage] ?? placeholderImg" height="520" cover
-                            class="bg-grey-lighten-4">
-                            <template #placeholder>
-                                <div class="d-flex flex-column align-center justify-center h-100 text-medium-emphasis">
-                                    <v-icon size="56">mdi-image-off-outline</v-icon>
-                                    <div class="text-caption mt-2">Sin imagen</div>
-                                </div>
-                            </template>
-                        </v-img>
-                    </v-card>
-
-                    <!-- Thumbs -->
-                    <v-slide-group v-if="images.length > 1" class="mt-4" show-arrows>
-                        <v-slide-group-item v-for="(src, idx) in images" :key="src + idx">
-                            <v-card class="mr-3 thumb" :class="{ 'thumb--active': idx === activeImage }" rounded="lg"
-                                variant="outlined" width="90" @click="activeImage = idx">
-                                <v-img :src="src" height="110" cover class="bg-grey-lighten-4" />
-                            </v-card>
-                        </v-slide-group-item>
-                    </v-slide-group>
-                </v-col>
-
-                <!-- Info -->
-                <v-col cols="12" md="6">
-                    <div class="d-flex flex-wrap ga-2 mb-3">
-                        <v-chip v-if="product.categoryLabel" color="primary" variant="tonal" label>
-                            {{ product.categoryLabel }}
-                        </v-chip>
-                        <v-chip v-if="product.typeLabel" variant="tonal" label>
-                            {{ product.typeLabel }}
-                        </v-chip>
-                        <v-chip v-if="product.brandLabel" variant="outlined" label>
-                            {{ product.brandLabel }}
-                        </v-chip>
-                    </div>
-
-                    <h1 class="text-h4 font-weight-black mb-2">
-                        {{ product.name }}
-                    </h1>
-
-                    <div class="d-flex align-center ga-3 mb-3">
-                        <div class="text-h5 font-weight-bold">
-                            {{ formatPrice(product.price) }}
-                        </div>
-
-                        <div class="d-flex align-center ga-1">
-                            <v-rating :model-value="product.rating" density="compact" half-increments readonly />
-                            <span class="text-body-2 text-medium-emphasis">
-                                ({{ product.reviews.length }})
-                            </span>
-                        </div>
-                    </div>
-
-                    <p v-if="product.shortDescription" class="text-body-1 text-medium-emphasis mb-6">
-                        {{ product.shortDescription }}
-                    </p>
-
-                    <!-- Color -->
-                    <div class="mb-4">
-                        <div class="text-subtitle-2 font-weight-bold mb-2">
-                            Color
-                        </div>
-
-                        <v-chip-group v-model="selectedColorKey" selected-class="chip--selected" mandatory>
-                            <v-chip v-for="c in product.colors" :key="c.key" :value="c.key" variant="outlined" label>
-                                <span class="color-dot mr-2" :style="{ background: c.hex }" />
-                                {{ c.label }}
-                            </v-chip>
-                        </v-chip-group>
-                    </div>
-
-                    <!-- Size -->
-                    <div class="mb-5">
-                        <div class="text-subtitle-2 font-weight-bold mb-2">
-                            Talla
-                        </div>
-
-                        <v-chip-group v-model="selectedSizeKey" selected-class="chip--selected" mandatory>
-                            <v-chip v-for="s in product.sizes" :key="s.key" :value="s.key" :disabled="!s.available"
-                                variant="outlined" label>
-                                {{ s.label }}
-                            </v-chip>
-                        </v-chip-group>
-                    </div>
-
-                    <!-- Qty -->
-                    <div class="mb-6">
-                        <div class="text-subtitle-2 font-weight-bold mb-2">
-                            Cantidad
-                        </div>
-
-                        <div class="d-flex align-center ga-2">
-                            <v-btn icon="mdi-minus" variant="outlined" :disabled="qty <= 1"
-                                @click="qty = Math.max(1, qty - 1)" />
-                            <v-text-field v-model="qty" type="number" density="compact" variant="outlined"
-                                style="max-width: 110px" hide-details />
-                            <v-btn icon="mdi-plus" variant="outlined" @click="qty = qty + 1" />
-                        </div>
-                    </div>
-
-                    <!-- CTA -->
-                    <div class="d-flex flex-wrap ga-3">
-                        <v-btn color="primary" size="large" prepend-icon="mdi-cart" @click="addToCart()">
-                            Añadir al carrito
-                        </v-btn>
-
-                        <v-btn size="large" variant="outlined"
-                            :prepend-icon="wishlisted ? 'mdi-heart' : 'mdi-heart-outline'" @click="toggleWishlist()">
-                            {{ wishlisted ? 'En favoritos' : 'Favorito' }}
-                        </v-btn>
-                    </div>
-
-                    <v-alert class="mt-6" rounded="xl" variant="tonal" type="info">
-                        Envío gratis en 2-4 días · Devoluciones gratuitas.
-                    </v-alert>
-                </v-col>
-            </v-row>
-
-            <!-- Details / Reviews -->
-            <v-row class="mt-8" dense>
-                <v-col cols="12" md="7">
-                    <v-card rounded="xl" variant="outlined" class="pa-6">
-                        <h2 class="text-h6 font-weight-bold mb-3">Detalles del producto</h2>
-
-                        <p v-if="product.longDescription" class="text-body-1 text-medium-emphasis mb-4">
-                            {{ product.longDescription }}
-                        </p>
-
-                        <v-list density="comfortable" class="px-0">
-                            <v-list-item title="Referencia" :subtitle="product.ref || '—'" />
-                            <v-list-item title="Marca" :subtitle="product.brandLabel || '—'" />
-                            <v-list-item title="Categoría" :subtitle="product.categoryLabel || '—'" />
-                            <v-list-item title="Tipo" :subtitle="product.typeLabel || '—'" />
-                        </v-list>
-                    </v-card>
-                </v-col>
-
-                <v-col cols="12" md="5">
-                    <v-card rounded="xl" variant="outlined" class="pa-6">
-                        <div class="d-flex align-center justify-space-between mb-3">
-                            <h2 class="text-h6 font-weight-bold mb-0">Valoraciones</h2>
-                            <v-btn size="small" variant="text" @click="writeReview()">
-                                Escribir
-                            </v-btn>
-                        </div>
-
-                        <v-alert v-if="product.reviews.length === 0" type="info" variant="tonal" rounded="xl">
-                            Aún no hay valoraciones.
-                        </v-alert>
-
-                        <v-list v-else density="comfortable" class="px-0">
-                            <v-list-item v-for="r in product.reviews" :key="r.id" class="px-0">
-                                <template #prepend>
-                                    <v-avatar size="40" class="mr-3">
-                                        <v-img v-if="r.avatar" :src="r.avatar" cover />
-                                        <span v-else class="text-caption font-weight-bold">
-                                            {{ initials(r.author) }}
-                                        </span>
-                                    </v-avatar>
-                                </template>
-
-                                <v-list-item-title class="font-weight-bold">
-                                    {{ r.author }}
-                                </v-list-item-title>
-
-                                <v-list-item-subtitle class="text-medium-emphasis">
-                                    <div class="d-flex align-center ga-2">
-                                        <v-rating :model-value="r.stars" density="compact" readonly />
-                                        <span v-if="r.time" class="text-caption">{{ r.time }}</span>
-                                    </div>
-                                    <div v-if="r.text" class="mt-1">
-                                        {{ r.text }}
-                                    </div>
-                                </v-list-item-subtitle>
-                            </v-list-item>
-                        </v-list>
-                    </v-card>
-                </v-col>
-            </v-row>
-
-            <div class="d-flex justify-end ga-3 mt-8">
-                <v-btn variant="outlined" @click="router.push('/shop')">Seguir comprando</v-btn>
-                <v-btn color="primary" @click="router.push('/carrito')">Ir al carrito</v-btn>
-            </div>
+        <div class="d-flex flex-wrap ga-3">
+          <v-btn color="primary" @click="router.push('/shop')">Volver a tienda</v-btn>
+          <v-btn variant="outlined" @click="router.back()">Atrás</v-btn>
         </div>
-    </v-container>
+      </div>
+    </v-alert>
+
+    <!-- Error -->
+    <v-alert
+      v-else-if="error"
+      type="error"
+      variant="tonal"
+      rounded="xl"
+      class="mb-6"
+    >
+      <div class="d-flex flex-column ga-3">
+        <div>
+          <div class="text-h6 font-weight-bold">Error al cargar el producto</div>
+          <div class="text-body-2 text-medium-emphasis">
+            Inténtalo de nuevo en unos segundos.
+          </div>
+        </div>
+
+        <div class="d-flex flex-wrap ga-3">
+          <v-btn color="primary" @click="fetchProduct()">Reintentar</v-btn>
+          <v-btn variant="outlined" @click="router.back()">Atrás</v-btn>
+        </div>
+      </div>
+    </v-alert>
+
+    <!-- Content -->
+    <div v-else-if="product">
+      <v-row dense>
+        <!-- Gallery -->
+        <v-col cols="12" md="6">
+          <v-card rounded="xl" variant="outlined" class="overflow-hidden">
+            <v-img
+              :src="images[activeImage] ?? placeholderImg"
+              height="520"
+              cover
+              class="bg-grey-lighten-4"
+            >
+              <template #placeholder>
+                <div
+                  class="d-flex flex-column align-center justify-center h-100 text-medium-emphasis"
+                >
+                  <v-icon size="56">mdi-image-off-outline</v-icon>
+                  <div class="text-caption mt-2">Sin imagen</div>
+                </div>
+              </template>
+            </v-img>
+          </v-card>
+
+          <!-- Thumbs -->
+          <v-slide-group v-if="images?.length > 1" class="mt-4" show-arrows>
+            <v-slide-group-item v-for="(src, idx) in images" :key="src + idx">
+              <v-card
+                class="mr-3 thumb"
+                :class="{ 'thumb--active': idx === activeImage }"
+                rounded="lg"
+                variant="outlined"
+                width="90"
+                @click="activeImage = idx"
+              >
+                <v-img :src="src" height="110" cover class="bg-grey-lighten-4" />
+              </v-card>
+            </v-slide-group-item>
+          </v-slide-group>
+        </v-col>
+
+        <!-- Info -->
+        <v-col cols="12" md="6">
+          <div class="d-flex flex-wrap ga-2 mb-3">
+            <v-chip v-if="product.categoryLabel" color="primary" variant="tonal" label>
+              {{ product.categoryLabel }}
+            </v-chip>
+            <v-chip v-if="product.typeLabel" variant="tonal" label>
+              {{ product.typeLabel }}
+            </v-chip>
+            <v-chip v-if="product.brandLabel" variant="outlined" label>
+              {{ product.brandLabel }}
+            </v-chip>
+          </div>
+
+          <h1 class="text-h4 font-weight-black mb-2">
+            {{ product.name }}
+          </h1>
+
+          <div class="d-flex align-center ga-3 mb-3">
+            <div class="text-h5 font-weight-bold">
+              {{ formatPrice(product.price) }}
+            </div>
+
+            <div class="d-flex align-center ga-1">
+              <!-- Rating (temporal). Luego lo calculamos desde reviews -->
+              <v-rating :model-value="averageRating" density="compact" half-increments readonly />
+              <span class="text-body-2 text-medium-emphasis">
+                  {{ averageRating.toFixed(1) }} · ({{ reviews?.length ?? 0 }})
+              </span>
+            </div>
+          </div>
+
+          <p v-if="product.shortDescription" class="text-body-1 text-medium-emphasis mb-6">
+            {{ product.shortDescription }}
+          </p>
+
+          <!-- Color -->
+          <div class="mb-4">
+            <div class="text-subtitle-2 font-weight-bold mb-2">
+              Color
+            </div>
+
+            <v-chip-group v-model="selectedColorKey" selected-class="chip--selected" mandatory>
+              <v-chip
+                v-for="c in product.colors"
+                :key="c.key"
+                :value="c.key"
+                variant="outlined"
+                label
+              >
+                <span class="color-dot mr-2" :style="{ background: c.hex }" />
+                {{ c.label }}
+              </v-chip>
+            </v-chip-group>
+          </div>
+
+          <!-- Size -->
+          <div class="mb-5">
+            <div class="text-subtitle-2 font-weight-bold mb-2">
+              Talla
+            </div>
+
+            <v-chip-group v-model="selectedSizeKey" selected-class="chip--selected" mandatory>
+              <v-chip
+                v-for="s in product.sizes"
+                :key="s.key"
+                :value="s.key"
+                :disabled="!s.available"
+                variant="outlined"
+                label
+              >
+                {{ s.label }}
+              </v-chip>
+            </v-chip-group>
+          </div>
+
+          <!-- Qty -->
+          <div class="mb-6">
+            <div class="text-subtitle-2 font-weight-bold mb-2">
+              Cantidad
+            </div>
+
+            <div class="d-flex align-center ga-2">
+              <v-btn
+                icon="mdi-minus"
+                variant="outlined"
+                :disabled="qty <= 1"
+                @click="qty = Math.max(1, qty - 1)"
+              />
+              <v-text-field
+                v-model="qty"
+                type="number"
+                density="compact"
+                variant="outlined"
+                style="max-width: 110px"
+                hide-details
+              />
+              <v-btn icon="mdi-plus" variant="outlined" @click="qty = qty + 1" />
+            </div>
+          </div>
+
+          <!-- CTA -->
+          <div class="d-flex flex-wrap ga-3">
+            <v-btn color="primary" size="large" prepend-icon="mdi-cart" @click="addToCart()">
+              Añadir al carrito
+            </v-btn>
+
+            <v-btn
+              size="large"
+              variant="outlined"
+              :prepend-icon="wishlisted ? 'mdi-heart' : 'mdi-heart-outline'"
+              @click="toggleWishlist()"
+            >
+              {{ wishlisted ? 'En favoritos' : 'Favorito' }}
+            </v-btn>
+          </div>
+
+          <v-alert class="mt-6" rounded="xl" variant="tonal" type="info">
+            Envío gratis en 2-4 días · Devoluciones gratuitas.
+          </v-alert>
+        </v-col>
+      </v-row>
+
+      <!-- Details / Reviews -->
+      <v-row class="mt-8" dense>
+        <v-col cols="12" md="7">
+          <v-card rounded="xl" variant="outlined" class="pa-6">
+            <h2 class="text-h6 font-weight-bold mb-3">Detalles del producto</h2>
+
+            <p v-if="product.longDescription" class="text-body-1 text-medium-emphasis mb-4">
+              {{ product.longDescription }}
+            </p>
+
+            <v-list density="comfortable" class="px-0">
+              <v-list-item title="Referencia" :subtitle="product.ref || '—'" />
+              <v-list-item title="Categoría" :subtitle="product.categoryLabel || '—'" />
+              <v-list-item title="Tipo" :subtitle="product.typeLabel || '—'" />
+            </v-list>
+          </v-card>
+        </v-col>
+
+        <v-col cols="12" md="5">
+          <v-card rounded="xl" variant="outlined" class="pa-6">
+            <div class="d-flex align-center justify-space-between mb-3">
+              <h2 class="text-h6 font-weight-bold mb-0">Valoraciones</h2>
+              <v-btn size="small" variant="text" @click="writeReview()">
+                Escribir
+              </v-btn>
+            </div>
+
+            <v-alert v-if="(reviews?.length ?? 0) === 0" type="info" variant="tonal" rounded="xl">
+              Aún no hay valoraciones.
+            </v-alert>
+
+            <v-list v-else density="comfortable" class="px-0">
+              <v-list-item v-for="r in reviews" :key="r.id" class="px-0">
+                <template #prepend>
+                  <v-avatar size="40" class="mr-3">
+                    <v-img v-if="r.avatar" :src="r.avatar" cover />
+                    <span v-else class="text-caption font-weight-bold">
+                      {{ initials(r.author) }}
+                    </span>
+                  </v-avatar>
+                </template>
+
+                <v-list-item-title class="font-weight-bold">
+                    <div class="d-flex align-center justify-space-between">
+                        <span>{{ r.author }}</span>
+
+                        <v-btn
+                        v-if="auth.isAuthenticated && r.userId && auth.user?.id === r.userId"
+                        icon="mdi-pencil"
+                        size="x-small"
+                        variant="text"
+                        @click="editReview(r)"
+                        />
+                    </div>
+                </v-list-item-title>
+
+
+                <v-list-item-subtitle class="text-medium-emphasis">
+                  <div class="d-flex align-center ga-2">
+                    <v-rating :model-value="r.stars" density="compact" readonly />
+                    <span v-if="r.time" class="text-caption">{{ r.time }}</span>
+                  </div>
+
+                  <div v-if="r.text" class="mt-1">
+                    {{ r.text }}
+                  </div>
+                </v-list-item-subtitle>
+              </v-list-item>
+            </v-list>
+          </v-card>
+        </v-col>
+      </v-row>
+
+      <div class="d-flex justify-end ga-3 mt-8">
+        <v-btn variant="outlined" @click="router.push('/shop')">Seguir comprando</v-btn>
+        <v-btn color="primary" @click="router.push('/carrito')">Ir al carrito</v-btn>
+      </div>
+
+      <!-- Diálogo para escribir una valoración -->
+      <v-dialog v-model="reviewDialog" max-width="560">
+        <v-card rounded="xl">
+          <v-card-title class="text-h6 font-weight-bold">
+            Escribir valoración
+          </v-card-title>
+
+          <v-card-text>
+            <div class="mb-4">
+              <div class="text-subtitle-2 font-weight-bold mb-2">Puntuación</div>
+              <v-rating v-model="newReviewRating" density="comfortable" hover />
+            </div>
+
+            <div class="mb-2">
+              <div class="text-subtitle-2 font-weight-bold mb-2">Comentario (opcional)</div>
+              <v-textarea
+                v-model="newReviewComment"
+                variant="outlined"
+                rows="4"
+                auto-grow
+                placeholder="Cuéntanos qué te ha parecido..."
+              />
+            </div>
+
+            <v-alert v-if="reviewError" type="error" variant="tonal" rounded="xl" class="mt-3">
+              {{ reviewError }}
+            </v-alert>
+          </v-card-text>
+
+          <v-card-actions class="pa-4">
+            <v-spacer />
+            <v-btn variant="text" @click="reviewDialog = false" :disabled="reviewSubmitting">
+              Cancelar
+            </v-btn>
+            <v-btn color="primary" :loading="reviewSubmitting" @click="submitReview()">
+              Enviar
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
+    </div>
+  </v-container>
 </template>
+
 
 <script setup>
 import { computed, ref, watch } from "vue";
@@ -256,12 +360,23 @@ import axios from "axios";
 import { useWishlistStore } from "@/stores/wishlist";
 import { useCartStore } from "../stores/cart";
 import { useUiStore } from "../stores/ui";
+import { useAuthStore } from "@/stores/auth";
 
 
 const route = useRoute();
 const router = useRouter();
 const cart = useCartStore();
 const ui = useUiStore();
+
+const auth = useAuthStore();
+
+// --- diálogo / form de review ---
+const reviewDialog = ref(false);
+const reviewSubmitting = ref(false);
+const reviewError = ref("");
+
+const newReviewRating = ref(5);
+const newReviewComment = ref("");
 
 const productId = computed(() => String(route.params.id ?? ""));
 
@@ -273,12 +388,24 @@ const notFound = ref(false);
 const images = ref([]);
 const activeImage = ref(0);
 
+const reviews = ref([]);
+const editingReviewId = ref(null);
+
 const qty = ref(1);
 const wishlist = useWishlistStore();
 
 const wishlisted = computed(() =>
     wishlist.isInWishlist(productId.value)
 );
+
+const averageRating = computed(() => {
+  const arr = reviews.value || [];
+  if (arr.length === 0) return 0;
+
+  const sum = arr.reduce((acc, r) => acc + (Number(r.stars) || 0), 0);
+  return sum / arr.length;
+});
+
 
 const selectedColorKey = ref(null);
 const selectedSizeKey = ref(null);
@@ -343,22 +470,6 @@ function mapApiToUi(api) {
         .map((img) => normalizeImageUrl(img?.url || img?.path || img?.src || img))
         .filter(Boolean);
 
-    // reviews
-    const rs = Array.isArray(api?.reviews) ? api.reviews : [];
-    const reviews = rs.map((r) => ({
-        id: String(r.id ?? Math.random()),
-        author: r.user?.name ?? "Usuario",
-        stars: Number(r.rating ?? r.stars ?? 0),
-        time: r.created_at ? new Date(r.created_at).toLocaleDateString("es-ES") : "",
-        text: r.comment ?? r.body ?? r.text ?? "",
-        avatar: r.user?.avatar_url ?? r.user?.avatar ?? null,
-    }));
-
-    const rating =
-        reviews.length > 0
-            ? reviews.reduce((sum, r) => sum + (Number(r.stars) || 0), 0) / reviews.length
-            : 0;
-
     // relaciones (según vuestro modelo: color/size/category/type suelen ser AttributeValue)
     const colorLabel = api?.color?.value ?? api?.color?.name ?? "Único";
     const sizeLabel = api?.size?.value ?? api?.size?.name ?? "Única";
@@ -393,10 +504,34 @@ function mapApiToUi(api) {
         images: urls.length ? urls : [placeholderImg],
         colors,
         sizes,
-
-        reviews,
-        rating,
     };
+}
+
+function mapReviewsToUi(rs) {
+  const arr = Array.isArray(rs) ? rs : [];
+
+  return arr.map((r) => ({
+  id: String(r.id),
+  userId: r.user_id ?? r.user?.id ?? null,
+  author: r.user?.name ?? "Usuario",
+  stars: Number(r.rating ?? 0),
+  time: r.created_at ? new Date(r.created_at).toLocaleDateString("es-ES") : "",
+  text: r.comment ?? "",
+  avatar: r.user?.avatar_url ?? r.user?.avatar ?? null,
+  }));
+}
+
+async function fetchReviews() {
+  const id = productId.value;
+  if (!id) return;
+
+  try {
+    const { data } = await axios.get(`/api/products/${id}/reviews`);
+    reviews.value = mapReviewsToUi(data);
+  } catch (e) {
+    console.error("REVIEWS ERROR:", e);
+    reviews.value = [];
+  }
 }
 
 async function fetchProduct() {
@@ -419,6 +554,8 @@ async function fetchProduct() {
         selectedSizeKey.value = ui.sizes[0]?.key ?? null;
 
         qty.value = 1;
+
+        await fetchReviews();
     } catch (e) {
         console.error("PRODUCT DETAIL ERROR:", e);
         product.value = null;
@@ -475,8 +612,70 @@ async function toggleWishlist() {
 }
 
 function writeReview() {
-    alert("Más adelante conectaremos esto con valoraciones reales 🙂");
+    reviewError.value = "";
+
+    // Si no está logueado, redirigimos a login y guardamos a dónde volver
+    if (!auth.isAuthenticated) {
+        router.push({ path: "/login", query: { redirect: route.fullPath } });
+        return;
+    }
+
+    // Inicializamos el formulario y abrimos el diálogo
+    editingReviewId.value = null;
+    newReviewRating.value = 5;
+    newReviewComment.value = "";
+    reviewDialog.value = true;
 }
+
+async function submitReview() {
+  if (!auth.isAuthenticated) {
+    router.push({ path: "/login", query: { redirect: route.fullPath } });
+    return;
+  }
+
+  reviewSubmitting.value = true;
+  reviewError.value = "";
+
+  try {
+    await axios.get("/sanctum/csrf-cookie");
+
+    const payload = {
+      rating: newReviewRating.value,
+      comment: newReviewComment.value,
+    };
+
+    //Editar si editingReviewId tiene valor, si no => crear
+    if (editingReviewId.value) {
+      await axios.patch(
+        `/api/products/${productId.value}/reviews/${editingReviewId.value}`,
+        payload
+      );
+    } else {
+      await axios.post(`/api/products/${productId.value}/reviews`, payload);
+    }
+
+    reviewDialog.value = false;
+    editingReviewId.value = null;
+
+    // Recargar reviews para ver cambios
+    await fetchReviews();
+  } catch (e) {
+    console.error("SUBMIT REVIEW ERROR:", e);
+    reviewError.value =
+      e?.response?.data?.message || "No se pudo enviar la valoración.";
+  } finally {
+    reviewSubmitting.value = false;
+  }
+}
+
+function editReview(r) {
+  reviewError.value = "";
+  editingReviewId.value = r.id;
+  newReviewRating.value = r.stars;
+  newReviewComment.value = r.text ?? "";
+  reviewDialog.value = true;
+}
+
 </script>
 
 <style scoped>

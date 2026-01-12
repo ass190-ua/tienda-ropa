@@ -92,14 +92,14 @@
                                         <v-divider />
                                     </div>
 
-                                    <v-btn variant="outlined" size="large" block rounded="lg" class="text-none social-btn"
-                                        @click="onSocial('google')">
+                                    <v-btn variant="outlined" size="large" block rounded="lg"
+                                        class="text-none social-btn" @click="onSocial('google')">
                                         <img src="../assets/google.png" class="social-logo" alt="Google" />
                                         Continuar con Google
                                     </v-btn>
 
-                                    <v-btn variant="outlined" size="large" block rounded="lg" class="text-none mt-3 social-btn"
-                                        @click="onSocial('github')">
+                                    <v-btn variant="outlined" size="large" block rounded="lg"
+                                        class="text-none mt-3 social-btn" @click="onSocial('github')">
                                         <img src="../assets/github.png" class="social-logo" alt="Github" />
                                         Continuar con GitHub
                                     </v-btn>
@@ -120,10 +120,11 @@
 
 <script setup>
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth' // <--- Importamos el store
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 const form = ref(null)
@@ -159,8 +160,12 @@ async function onSubmit() {
             remember: remember.value
         })
 
-        // Si todo va bien, redirigir a la tienda o al home
-        router.push('/')
+        const redirect = route.query.redirect
+        if (typeof redirect === 'string' && redirect.startsWith('/')) {
+            router.push(redirect)
+        } else {
+            router.push('/')
+        }
     } catch (e) {
         // Capturamos el error que devuelve Laravel
         if (e.response && e.response.status === 422) {
@@ -270,15 +275,15 @@ function onSocial(provider) {
 }
 
 .social-btn {
-  justify-content: center;
-  position: relative;
+    justify-content: center;
+    position: relative;
 }
 
 .social-logo {
-  position: absolute;
-  left: 16px;
-  width: 22px;
-  height: 22px;
+    position: absolute;
+    left: 16px;
+    width: 22px;
+    height: 22px;
 }
 
 .link {

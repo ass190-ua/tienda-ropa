@@ -14,11 +14,6 @@
                             {{ subtitle }}
                         </div>
 
-                        <div v-if="isCompleted" class="text-body-2 text-medium-emphasis mt-3">
-                            Te hemos enviado un resumen al correo (simulado). Puedes consultar tus pedidos cuando
-                            quieras.
-                        </div>
-
                         <v-chip v-if="isCompleted" class="mt-4" variant="tonal" rounded="lg" :color="chipColor">
                             Estado: Completado
                         </v-chip>
@@ -37,8 +32,8 @@
                                 Seguir comprando
                             </v-btn>
 
-                            <v-btn v-if="isCompleted" variant="outlined" class="text-none"
-                                prepend-icon="mdi-receipt-text-outline" @click="goOrders">
+                            <v-btn v-if="isCompleted && !creatingOrder && !createError" variant="outlined"
+                                class="text-none" prepend-icon="mdi-receipt-text-outline" @click="goOrders">
                                 Mis pedidos
                             </v-btn>
 
@@ -55,16 +50,14 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import axios from 'axios'
 import { useCartStore } from '@/stores/cart'
-import { useAuthStore } from '../stores/auth'
-import { ca } from 'vuetify/locale'
 
 const route = useRoute()
 const router = useRouter()
 const cart = useCartStore()
-const auth = useAuthStore()
 
 // Query params
 const token = computed(() => String(route.query.token ?? ''))
@@ -73,6 +66,10 @@ const reason = computed(() => String(route.query.reason ?? ''))
 
 const isCompleted = computed(() => status.value === 'COMPLETED')
 const isFailed = computed(() => status.value === 'FAILED')
+
+const creatingOrder = ref(false)
+const createError = ref('')
+const orderCreated = ref(false)
 
 const icon = computed(() => {
     if (isCompleted.value) return 'mdi-check-circle-outline'
@@ -95,87 +92,99 @@ const title = computed(() => {
 })
 
 const subtitle = computed(() => {
-    if (isCompleted.value) return 'Tu pedido se ha procesado correctamente.'
+    if (isCompleted.value) {
+        return orderCreated.value
+            ? 'Tu pedido se ha procesado correctamente.'
+            : 'Pago completado. Estamos registrando el pedido...'
+    }
     if (isFailed.value) return 'No se pudo completar el pago. Puedes intentarlo de nuevo.'
     return 'Hemos recibido la respuesta del TPV. Si no ves el resultado, vuelve a intentarlo.'
 })
 
-function ordersKeyFor(userId) {
-    return userId ? `tiendamoda_orders_id${userId}` : 'tiendamoda_orders_guest'
-}
-
-function loadOrders(key) {
-    try {
-        const raw = localStorage.getItem(key)
-        if (!raw) return []
-        const parsed = JSON.parse(raw)
-        return Array.isArray(parsed) ? parsed : []
-    } catch {
-        return []
-    }
-}
-
-function saveOrders(key, list) {
-    try {
-        localStorage.setItem(key, JSON.stringify(list))
-    } catch {}
-}
-
-function persistOrderFromResult() {
-    if (!token.value) return
-
-    const key = ordersKeyFor(auth.user?.id ?? null)
-    const list = loadOrders(key)
-
-    let pending = null
-
+function readPending() {
     try {
         const raw = localStorage.getItem('tiendamoda_pending_order')
-        if (raw) {
-            const p = JSON.parse(raw)
-            if (p && (p.token === token.value || p.id === token.value)) pending = 0
-        }
-    } catch { }
+        return raw ? JSON.parse(raw) : null
+    } catch {
+        return null
+    }
+}
 
-    const order = {
-        ...(pending ?? {}),
-        id: token.value,
+function removePending() {
+    try { localStorage.removeItem('tiendamoda_pending_order') } catch { }
+}
+
+async function createOrderInDb() {
+    const pending = readPending()
+
+    if (!pending) throw new Error('No existe pending_order en el navegador.')
+    if (String(pending.token ?? pending.id ?? '') !== token.value) {
+        throw new Error('El token no coincide con el pending_order (posible sesión vieja).')
+    }
+
+    const payload = {
         token: token.value,
-        createdAt: pending?.createdAt ?? Date.now(),
-        status: status.value || 'UNKOWN',
-        total: pending?.total ?? null,
-        currency: pending?.currency ?? 'EUR',
-        itemsCount: pending?.itemsCount ?? null,
-        failureReason: isFailed.value ?? (reason.value || pending?.failureReason)
+        amount: pending.total ?? null,
+        shipping: pending.shipping,
+        billing: pending.billing,
+        items: Array.isArray(pending.items) ? pending.items : [],
+        ...(pending?.coupon?.code ? { coupon_code: pending.coupon.code } : {}),
     }
 
-    const idx = list.findIndex(o => String(o?.id || o?.token || '') === order.id)
+    if (!payload.shipping || !payload.billing || payload.items.length === 0) {
+        throw new Error('Faltan direcciones o items en pending_order.')
+    }
 
-    if (idx >= 0) list[idx] = order
-    else list.push(order)
+    if (payload.items.some(i => !i.product_id || !i.qty)) {
+        throw new Error('Hay items inválidos (product_id/qty) en pending_order.')
+    }
 
-    saveOrders(key, list)
-
-    if (pending) {
-        try {
-            localStorage.removeItem('tiendamoda_pending_order')
-        } catch { }
+    // POST con retry 419 (Sanctum/CSRF)
+    try {
+        const resp = await axios.post('/api/orders/complete', payload)
+        return resp?.data
+    } catch (e) {
+        if (e?.response?.status === 419) {
+            await axios.get('/sanctum/csrf-cookie')
+            await axios.post('/api/orders/complete', payload)
+        } else {
+            throw e
+        }
     }
 }
 
-// Vaciar carrito (compatibilidad con tu store)
-function clearCartSafely() {
-    if (typeof cart.clearCart === 'function') return cart.clearCart()
-    if (typeof cart.clear === 'function') return cart.clear()
-    if (Array.isArray(cart.items)) cart.items = []
-}
+onMounted(async () => {
+    if (!token.value) return
 
-onMounted(() => {
-    // Si el pago está COMPLETED, vaciamos el carrito
-    if (isCompleted.value) {
+    // Si falla, no tocamos carrito
+    if (isFailed.value) {
+        // limpiamos pending para no acumular tokens
+        removePending()
+        return
+    }
+
+    // Solo creamos pedido si COMPLETED
+    if (!isCompleted.value) return
+
+    creatingOrder.value = true
+    createError.value = ''
+
+    try {
+        const result = await createOrderInDb()
+        orderCreated.value = true
+
         cart.clear()
+        removePending()
+    } catch (e) {
+        createError.value =
+            e?.response?.data?.error ||
+            e?.response?.data?.message ||
+            e?.message ||
+            'No se pudo crear el pedido en la base de datos.'
+        console.error(e)
+    } finally {
+        creatingOrder.value = false
     }
-    persistOrderFromResult()
 })
 
 function goShop() {

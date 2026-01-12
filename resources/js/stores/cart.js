@@ -1,5 +1,32 @@
 import { defineStore } from 'pinia'
 
+function mergeItemLists(baseItems, incomingItems) {
+    const map = new Map()
+
+    for (const it of (baseItems ?? [])) {
+        if (!it?.key) continue
+        map.set(it.key, { ...it, qty: Number(it.qty ?? 1) })
+    }
+
+    for (const it of (incomingItems ?? [])) {
+        const k = it?.key
+        if (!k) continue
+
+        if (map.has(k)) {
+            const existing = map.get(k)
+            existing.qty = Number(existing.qty ?? 1) + Number(it.qty ?? 1)
+
+            existing.product = existing.product ?? it.product
+            existing.size = existing.size ?? it.size
+            existing.color = existing.color ?? it.color
+        } else {
+            map.set(k, { ...it, qty: Number(it.qty ?? 1) })
+        }
+    }
+
+    return Array.from(map.values())
+}
+
 function lineKey(productId, size, color) {
     return `${productId}__${size ?? ''}__${color ?? ''}`
 }
@@ -80,7 +107,32 @@ export const useCartStore = defineStore('cart', {
     actions: {
         // ✅ Cambia el “dueño” del carrito y recarga desde su storage
         setOwner(userId) {
-            this.userId = userId ?? null
+            const nextUserId = userId ?? null
+
+            // Si pasamos de invitado -> usuario: mergeamos y vaciamos guest
+            if (this.userId === null && nextUserId !== null) {
+                const guestKey = storageKeyFor(null)
+                const userKey = storageKeyFor(nextUserId)
+
+                const guestItems =
+                    this.storageKey === guestKey ? (this.items ?? []) : loadCart(guestKey)
+
+                const userItems = loadCart(userKey)
+
+                const merged = mergeItemLists(userItems, guestItems)
+
+                saveCart(userKey, merged)
+                saveCart(guestKey, []) // vaciamos el carrito invitado
+
+                this.userId = nextUserId
+                this.storageKey = userKey
+                this.items = merged
+
+                return
+            }
+
+            // Cualquier otro caso: solo cambiamos el “dueño” y cargamos su carrito
+            this.userId = nextUserId
             this.storageKey = storageKeyFor(this.userId)
             this.items = loadCart(this.storageKey)
         },

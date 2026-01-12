@@ -1,0 +1,272 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use App\Models\Order;
+use App\Models\Address;
+use App\Models\Payment;
+use App\Models\Product;
+use App\Models\Coupon;
+
+class OrderController extends Controller
+{
+    public function index(Request $request)
+    {
+        $user = $request->user();
+
+        $orders = Order::query()
+            ->where('user_id', $user->id)
+            ->with([
+                'lines.product.images',
+                'payments',
+            ])
+            ->orderByDesc('created_at')
+            ->get();
+
+        $payload = $orders->map(function ($o) {
+            $latestPayment = $o->payments->sortByDesc('id')->first();
+            $itemsCount = $o->lines->sum('quantity');
+
+            $totalBase = (float)$o->subtotal
+                - (float)$o->discount_total
+                - (float)$o->coupon_discount_total;
+
+            $totalBase = (float) number_format($totalBase, 2, '.', '');
+
+            $totalPaid = $latestPayment ? (float)$latestPayment->amount : null;
+
+            // Mantén 'total' como “lo que se pagó” si hay pago, si no el totalBase
+            $total = $totalPaid !== null ? $totalPaid : $totalBase;
+
+            // Envío derivado: (pagado - base). Si no hay pago, lo dejamos null
+            $shippingTotal = $totalPaid !== null
+                ? (float) number_format(max(0, $totalPaid - $totalBase), 2, '.', '')
+                : null;
+
+            return [
+                'id' => $o->id,
+                'created_at' => $o->created_at?->toISOString(),
+                'status' => $o->status,
+
+                'subtotal' => (float)$o->subtotal,
+                'discount_total' => (float)$o->discount_total,
+                'coupon_discount_total' => (float)$o->coupon_discount_total,
+
+                'total_base' => $totalBase,
+
+                'total_paid' => $totalPaid,
+
+                'shipping_total' => $shippingTotal,
+
+                'total' => (float) number_format($total, 2, '.', ''),
+
+                'payment' => $latestPayment ? [
+                    'status' => $latestPayment->status,
+                    'transaction_id' => $latestPayment->transaction_id,
+                    'amount' => (float)$latestPayment->amount,
+                ] : null,
+
+                'items_count' => (int)$itemsCount,
+
+                'lines' => $o->lines->map(function ($l) {
+                    $p = $l->product;
+                    $firstImg = $p?->images?->sortBy('sort_order')->first();
+
+                    return [
+                        'product_id' => $l->product_id,
+                        'name' => $p?->name,
+                        'image_path' => $firstImg?->path,
+                        'quantity' => (int)$l->quantity,
+                        'unit_price' => (float)$l->unit_price,
+                        'line_total' => (float)$l->line_total,
+                    ];
+                })->values(),
+            ];
+        })->values();
+
+        return response()->json(['data' => $payload]);
+    }
+
+    public function completeFromTpv(Request $request)
+    {
+        $user = $request->user();
+
+        $data = $request->validate([
+            'token' => ['required', 'string', 'max:255'],
+
+            'amount' => ['nullable', 'numeric'],
+
+            'shipping' => ['required', 'array'],
+            'shipping.line1' => ['required', 'string', 'max:255'],
+            'shipping.city' => ['required', 'string', 'max:255'],
+            'shipping.zip' => ['required', 'string', 'max:50'],
+            'shipping.country' => ['required', 'string', 'max:255'],
+
+            'billing' => ['required', 'array'],
+            'billing.line1' => ['required', 'string', 'max:255'],
+            'billing.city' => ['required', 'string', 'max:255'],
+            'billing.zip' => ['required', 'string', 'max:50'],
+            'billing.country' => ['required', 'string', 'max:255'],
+
+            'coupon_code' => ['nullable', 'string', 'max:50'],
+
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
+            'items.*.qty' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $token = $data['token'];
+
+        // Idempotencia: si ya existe un pago con ese token, no duplicamos pedido
+        $existing = Payment::query()
+            ->where('user_id', $user->id)
+            ->where('transaction_id', $token)
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'data' => [
+                    'order_id' => $existing->order_id,
+                    'already_exists' => true,
+                ]
+            ], 200);
+        }
+
+        // Verificar con el TPV (no confiar en la query string del frontend)
+        $tpvBase = rtrim(env('TPV_BASE_URL'), '/');
+        $apiKey  = env('TPV_API_KEY');
+
+        $verifyResp = Http::withHeaders([
+            'X-API-KEY' => $apiKey,
+            'Accept' => 'application/json',
+        ])->get($tpvBase . '/api/v1/payments/verify/' . $token);
+
+        if (!$verifyResp->successful()) {
+            return response()->json([
+                'error' => 'No se pudo verificar el pago con el TPV',
+                'tpv_status' => $verifyResp->status(),
+                'tpv_body' => $verifyResp->json(),
+            ], 502);
+        }
+
+        $body = $verifyResp->json() ?? [];
+        $finalStatus = $body['status'] ?? 'UNKNOWN';
+
+        if ($finalStatus !== 'COMPLETED') {
+            return response()->json([
+                'error' => 'El pago no está COMPLETED',
+                'status' => $finalStatus,
+            ], 422);
+        }
+
+        return DB::transaction(function () use ($user, $data, $token) {
+            // Direcciones
+            $shippingAddr = Address::create([
+                'user_id' => $user->id,
+                'line1' => $data['shipping']['line1'],
+                'city' => $data['shipping']['city'],
+                'zip' => $data['shipping']['zip'],
+                'country' => $data['shipping']['country'],
+                'type' => 'shipping',
+            ]);
+
+            Address::create([
+                'user_id' => $user->id,
+                'line1' => $data['billing']['line1'],
+                'city' => $data['billing']['city'],
+                'zip' => $data['billing']['zip'],
+                'country' => $data['billing']['country'],
+                'type' => 'billing',
+            ]);
+
+            // Crear pedido
+            $order = \App\Models\Order::create([
+                'user_id' => $user->id,
+                'address_id' => $shippingAddr->id,
+                'coupon_id' => null,
+                'subtotal' => 0,
+                'discount_total' => 0,
+                'coupon_discount_total' => 0,
+                'status' => \App\Models\Order::STATUS_PAID,
+            ]);
+
+            $subtotal = 0.0;
+
+            foreach ($data['items'] as $it) {
+                $product = Product::findOrFail($it['product_id']);
+                $qty = (int)$it['qty'];
+
+                $unit = (float)$product->price; // precio real en BD
+                $line = $unit * $qty;
+
+                $subtotal += $line;
+
+                $order->lines()->create([
+                    'product_id' => $product->id,
+                    'quantity' => $qty,
+                    'unit_price' => number_format($unit, 2, '.', ''),
+                    'line_total' => number_format($line, 2, '.', ''),
+                ]);
+            }
+
+            $couponId = null;
+            $couponDiscount = 0.0;
+
+            $code = trim((string)($data['coupon_code'] ?? ''));
+
+            if ($code !== '') {
+                $coupon = Coupon::query()
+                    ->whereRaw('LOWER(code) = ?', [mb_strtolower($code)])
+                    ->first();
+
+                if ($coupon && $coupon->is_active) {
+                    $now = now();
+
+                    $okDates = (!$coupon->start_date || $now->gte($coupon->start_date))
+                        && (!$coupon->end_date || $now->lte($coupon->end_date));
+
+                    $okMin = ($coupon->min_order_total === null)
+                        || ((float)$subtotal >= (float)$coupon->min_order_total);
+
+                    if ($okDates && $okMin) {
+                        if ($coupon->discount_type === 'percent') {
+                            $couponDiscount = (float)$subtotal * ((float)$coupon->discount_value / 100.0);
+                        } elseif ($coupon->discount_type === 'fixed') {
+                            $couponDiscount = (float)$coupon->discount_value;
+                        }
+
+                        $couponDiscount = round(min((float)$subtotal, (float)$couponDiscount), 2);
+                        $couponId = $coupon->id;
+                    }
+                }
+            }
+
+            $order->update([
+                'subtotal' => number_format($subtotal, 2, '.', ''),
+                'coupon_id' => $couponId,
+                'coupon_discount_total' => number_format($couponDiscount, 2, '.', ''),
+            ]);
+
+            // Pago asociado
+            $amount = $data['amount'] ?? $subtotal;
+
+            Payment::create([
+                'order_id' => $order->id,
+                'user_id' => $user->id,
+                'amount' => number_format((float)$amount, 2, '.', ''),
+                'status' => Payment::STATUS_SUCCESS,
+                'transaction_id' => $token,
+            ]);
+
+            return response()->json([
+                'data' => [
+                    'order_id' => $order->id,
+                    'token' => $token,
+                ]
+            ], 201);
+        });
+    }
+}

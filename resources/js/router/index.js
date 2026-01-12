@@ -9,7 +9,7 @@ const Shop = () => import("../pages/Shop.vue");
 const ProductDetail = () => import("../pages/ProductDetail.vue");
 const Cart = () => import("../pages/Cart.vue");
 const Login = () => import("../pages/Login.vue");
-const Register = () => import("../pages/Register.vue"); // Asegúrate de tener este componente o quita la ruta
+const Register = () => import("../pages/Register.vue");
 const ForgotPassword = () => import("../pages/ForgotPassword.vue");
 const Novedades = () => import("../pages/Novedades.vue");
 const Contacto = () => import("../pages/Contacto.vue");
@@ -22,8 +22,9 @@ const Envios = () => import("../pages/Envios.vue");
 const Devoluciones = () => import("../pages/Devoluciones.vue");
 const NotFound = () => import("../pages/NotFound.vue");
 const PaymentResult = () => import("../pages/PaymentResult.vue");
+const Checkout = () => import("../pages/Checkout.vue");
 
-// --- ADMIN (Componentes que crearemos) ---
+// --- ADMIN ---
 const AdminLayout = () => import("../components/layout/AdminLayout.vue");
 const AdminDashboard = () => import("../pages/admin/Dashboard.vue");
 const AdminProducts = () => import("../pages/admin/ProductList.vue");
@@ -54,7 +55,11 @@ const router = createRouter({
         // Usuario (Protegidas basicas)
         { path: "/wishlist", name: "wishlist", component: Wishlist, meta: { requiresAuth: true } },
         { path: "/orders", name: "orders", component: Orders, meta: { requiresAuth: true } },
+
+        // AQUÍ ESTABA EL PRIMER CONFLICTO: MANTENEMOS AMBAS
         { path: "/pago/resultado", name: "paymentResult", component: PaymentResult, meta: { requiresAuth: true } },
+        { path: "/checkout", name: "checkout", component: Checkout, meta: { requiresAuth: true } },
+
 
         // Footer / Info
         { path: '/novedades', component: Novedades },
@@ -74,38 +79,38 @@ const router = createRouter({
             meta: { requiresAuth: true, requiresAdmin: true },
             children: [
                 {
-                    path: "dashboard", // /admin/dashboard
+                    path: "dashboard",
                     name: "admin-dashboard",
                     component: AdminDashboard
                 },
                 {
-                    path: "products", // /admin/products
+                    path: "products",
                     name: "admin-products",
                     component: AdminProducts
                 },
                 {
-                    path: "products/create",  // /admin/products/create
+                    path: "products/create",
                     name: "admin-product-create",
                     component: AdminProductForm
                 },
                 {
-                    path: "products/:id/edit", // /admin/products/edit
+                    path: "products/:id/edit",
                     name: "admin-product-edit",
                     component: AdminProductForm,
                     props: true
                 },
                 {
-                    path: "users", // /admin/users
+                    path: "users",
                     name: "admin-users",
                     component: AdminUsers
                 },
                 {
-                    path: "orders", // /admin/orders
+                    path: "orders",
                     name: "admin-orders",
                     component: AdminOrders
                 },
                 {
-                    path: "reviews", // /admin/reviews
+                    path: "reviews",
                     name: "admin-reviews",
                     component: AdminReviews
                 }
@@ -121,17 +126,26 @@ const router = createRouter({
 });
 
 // ============================
-// GUARDIA DE NAVEGACIÓN
+// GUARDIA DE NAVEGACIÓN (FUSIONADA)
 // ============================
 router.beforeEach(async (to, from, next) => {
     const auth = useAuthStore();
 
-    // 1. Si la ruta requiere auth y no tenemos usuario cargado, intentar cargarlo
-    if (to.meta.requiresAuth && auth.user === null) {
-        await auth.fetchUser();
+    // 1. Cargar usuario si no existe (Lógica común)
+    if (auth.user === null) {
+        try { await auth.fetchUser(); } catch (e) { }
     }
 
-    // 2. Comprobar si está autenticado para rutas protegidas
+    // 2. Si vas a Login/Registro pero ya estás logueado -> Mandar a Home (Lógica de tus compañeros)
+    if ((to.name === 'login' || to.name === 'register') && auth.isAuthenticated) {
+        const redirect = to.query.redirect;
+        if (typeof redirect === "string" && redirect.startsWith("/")) {
+            return next(redirect);
+        }
+        return next({ name: "home" });
+    }
+
+    // 3. Rutas que requieren autenticación general (Wishlist, Checkout, etc.)
     if (to.meta.requiresAuth && !auth.isAuthenticated) {
         return next({
             name: "login",
@@ -139,19 +153,15 @@ router.beforeEach(async (to, from, next) => {
         });
     }
 
-    // 3. Lógica específica de ADMIN
+    // 4. Rutas de ADMIN (Tu lógica importante)
     if (to.meta.requiresAdmin) {
-        // Si no es admin (o no existe user), redirigir a home o login
         if (!auth.user?.is_admin) {
-            // Opción A: Redirigir a Home (silencioso)
+            // Si intenta entrar a admin y no es admin -> Home
             return next({ name: "home" });
-
-            // Opción B: Podrías redirigir a una página de "No autorizado"
-            // return next({ name: 'unauthorized' });
         }
     }
 
-    // Si pasa todas las comprobaciones, adelante
+    // Si pasa todas las reglas, adelante
     next();
 });
 

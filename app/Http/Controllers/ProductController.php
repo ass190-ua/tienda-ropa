@@ -128,7 +128,7 @@ class ProductController extends Controller
             'size',
             'category',
             'type',
-            'reviews.user',
+            //'reviews.user', las carrgamos en el controller de reviews
         ])->findOrFail($id);
 
         return response()->json($product);

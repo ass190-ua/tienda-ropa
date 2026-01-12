@@ -144,10 +144,11 @@
 
 <script setup>
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'       // <--- Importar Router
-import { useAuthStore } from '../stores/auth' // <--- Importar Store
+import { useRouter, useRoute } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 const form = ref(null)
@@ -206,9 +207,12 @@ async function onSubmit() {
             password_confirmation: confirmPassword.value // Laravel exige este campo exacto
         })
 
-        // Si funciona, redirigir al Home
-        router.push('/')
-
+        const redirect = route.query.redirect
+        if (typeof redirect === 'string' && redirect.startsWith('/')) {
+            router.push(redirect)
+        } else {
+            router.push('/')
+        }
     } catch (e) {
         // Manejo de errores de validación de Laravel (ej: email duplicado)
         if (e.response && e.response.status === 422) {

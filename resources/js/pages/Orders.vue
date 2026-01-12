@@ -40,12 +40,24 @@
 
         <!-- Empty state -->
         <v-fade-transition mode="out-in">
-            <div v-if="filteredOrders.length === 0" key="empty">
+            <div v-if="filteredOrders.length === 0">
                 <v-card rounded="xl" class="pa-10 text-center premium-surface">
                     <v-icon icon="mdi-receipt-text-outline" size="56" class="mb-3" />
-                    <div class="text-h6 font-weight-bold">Aún no tienes pedidos</div>
+
+                    <div v-if="!hasAnyOrders" class="text-h6 font-weight-bold">
+                        Aún no tienes pedidos
+                    </div>
+                    <div v-else class="text-h6 font-weight-bold">
+                        No hay pedidos en esta sección
+                    </div>
+
                     <div class="text-body-2 text-medium-emphasis mt-2">
-                        Cuando completes una compra, aparecerá aquí.
+                        <span v-if="!hasAnyOrders">
+                            Cuando completes una compra, aparecerá aquí.
+                        </span>
+                        <span v-else>
+                            Prueba con otro filtro (por ejemplo “Todos” o “Completados”).
+                        </span>
                     </div>
 
                     <div class="d-flex justify-center mt-6">
@@ -59,8 +71,7 @@
             <!-- List -->
             <div v-else key="list">
                 <TransitionGroup name="list" tag="div" class="orders-grid">
-                    <v-card v-for="o in filteredOrders" :key="o.id" rounded="xl"
-                        class="pa-5 order-card premium-surface">
+                    <v-card v-for="o in pagedOrders" :key="o.id" rounded="xl" class="pa-5 order-card premium-surface">
                         <div class="d-flex align-start justify-space-between ga-3">
                             <div class="min-w-0">
                                 <div class="text-caption text-medium-emphasis">
@@ -73,11 +84,11 @@
 
                                 <div class="d-flex align-center ga-2 mt-2">
                                     <v-chip size="small" rounded="lg" variant="tonal" :color="statusColor(o.status)">
-                                        {{ o.status }}
+                                        {{ o.statusLabel }}
                                     </v-chip>
 
                                     <div v-if="o.itemsCount != null" class="text-body-2 text-medium-emphasis">
-                                        · {{ o.itemsCount }} item(s)
+                                        · {{ o.itemsCount }} artículo(s)
                                     </div>
                                 </div>
 
@@ -97,82 +108,180 @@
 
                         <v-divider class="my-4" />
 
-                        <div class="d-flex flex-column flex-sm-row justify-space-between ga-2">
+                        <div class="ga-2">
                             <v-btn variant="outlined" class="text-none" prepend-icon="mdi-eye-outline"
                                 @click="openDetails(o)">
                                 Ver detalles
                             </v-btn>
-
-                            <v-btn variant="text" class="text-none" prepend-icon="mdi-storefront-outline"
-                                @click="goShop">
-                                Seguir comprando
-                            </v-btn>
                         </div>
                     </v-card>
                 </TransitionGroup>
+
+                <v-fade-transition>
+                    <div v-if="pageCount > 1" class="d-flex justify-center mt-6">
+                        <v-pagination v-model="page" :length="pageCount" :total-visible="5" rounded="circle" />
+                    </div>
+                </v-fade-transition>
             </div>
         </v-fade-transition>
 
         <!-- Dialog detalles -->
-        <v-dialog v-model="detailsOpen" max-width="560">
-            <v-card rounded="xl">
-                <v-card-title class="text-h6 font-weight-bold">
-                    Detalles del pedido
+        <!-- Dialog detalles (PRO) -->
+        <v-dialog v-model="detailsOpen" max-width="720">
+            <v-card rounded="xl" class="details-card">
+                <!-- Header -->
+                <v-card-title class="details-title">
+                    <div class="d-flex align-center justify-space-between w-100">
+                        <div class="d-flex align-center ga-3">
+                            <v-avatar rounded="lg" size="44" class="details-icon">
+                                <v-icon icon="mdi-receipt-text-outline" />
+                            </v-avatar>
+
+                            <div class="min-w-0">
+                                <div class="text-subtitle-1 font-weight-bold">Detalles del pedido</div>
+                                <div v-if="selected" class="text-caption text-medium-emphasis">
+                                    Pedido {{ selected.idShort }} · {{ formatDate(selected.createdAt) }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <v-btn icon variant="text" @click="detailsOpen = false" aria-label="Cerrar">
+                            <v-icon icon="mdi-close" />
+                        </v-btn>
+                    </div>
                 </v-card-title>
 
-                <v-card-text v-if="selected">
-                    <div class="d-flex align-center justify-space-between mb-3">
-                        <div class="text-body-2 text-medium-emphasis">ID</div>
-                        <div class="font-weight-bold">{{ selected.id }}</div>
-                    </div>
+                <v-divider />
 
-                    <div class="d-flex align-center justify-space-between mb-3">
-                        <div class="text-body-2 text-medium-emphasis">Fecha</div>
-                        <div class="font-weight-bold">{{ formatDate(selected.createdAt) }}</div>
-                    </div>
+                <v-card-text v-if="selected" class="pt-5">
+                    <!-- Status + total -->
+                    <div class="d-flex flex-column flex-sm-row align-start justify-space-between ga-4 mb-5">
+                        <div class="d-flex flex-column ga-2">
+                            <div class="text-caption text-medium-emphasis">Estado</div>
+                            <v-chip size="small" rounded="lg" variant="tonal" :color="statusColor(selected.status)">
+                                {{ selected.statusLabel ?? selected.status }}
+                            </v-chip>
 
-                    <div class="d-flex align-center justify-space-between mb-3">
-                        <div class="text-body-2 text-medium-emphasis">Estado</div>
-                        <v-chip size="small" rounded="lg" variant="tonal" :color="statusColor(selected.status)">
-                            {{ selected.status }}
-                        </v-chip>
-                    </div>
-
-                    <div class="d-flex align-center justify-space-between mb-3">
-                        <div class="text-body-2 text-medium-emphasis">Total</div>
-                        <div class="font-weight-bold">
-                            {{ money(selected.total ?? 0, selected.currency || 'EUR') }}
+                            <v-alert v-if="selected.failureReason" type="error" variant="tonal" rounded="lg"
+                                density="compact" class="mt-2">
+                                {{ selected.failureReason }}
+                            </v-alert>
                         </div>
+
+                        <v-card rounded="lg" class="total-pill pa-4" elevation="0">
+                            <div class="text-caption text-medium-emphasis">Total</div>
+                            <div class="text-h5 font-weight-bold mt-1">
+                                {{ money(selected.total ?? 0, selected.currency || 'EUR') }}
+                            </div>
+
+                            <div v-if="selected.itemsCount != null" class="text-caption text-medium-emphasis mt-1">
+                                {{ selected.itemsCount }} artículo(s)
+                            </div>
+                        </v-card>
                     </div>
 
-                    <div class="d-flex align-center justify-space-between mb-3">
-                        <div class="text-body-2 text-medium-emphasis">Token</div>
-                        <div class="font-weight-bold">{{ selected.tokenShort }}</div>
-                    </div>
+                    <!-- Desglose -->
+                    <v-card rounded="lg" class="breakdown-card pa-4" elevation="0">
+                        <div class="d-flex align-center justify-space-between mb-3">
+                            <div class="text-subtitle-2 font-weight-bold">Desglose</div>
 
-                    <v-alert v-if="selected.failureReason" type="error" variant="tonal" rounded="lg" class="mt-4">
-                        {{ selected.failureReason }}
-                    </v-alert>
+                            <v-chip v-if="selected.couponDiscountTotal > 0" size="small" rounded="lg" variant="tonal"
+                                color="success" prepend-icon="mdi-ticket-percent-outline">
+                                Cupón aplicado
+                            </v-chip>
+                        </div>
+
+                        <div class="d-flex justify-space-between mb-2">
+                            <div class="text-body-2 text-medium-emphasis">Subtotal</div>
+                            <div class="text-body-2 font-weight-medium">{{ money(selected.subtotal, selected.currency)
+                            }}</div>
+                        </div>
+
+                        <div v-if="selected.discountTotal > 0" class="d-flex justify-space-between mb-2">
+                            <div class="text-body-2 text-medium-emphasis">Descuento</div>
+                            <div class="text-body-2 font-weight-medium">-{{ money(selected.discountTotal,
+                                selected.currency) }}</div>
+                        </div>
+
+                        <div v-if="selected.couponDiscountTotal > 0" class="d-flex justify-space-between mb-2">
+                            <div class="text-body-2 text-medium-emphasis">Cupón</div>
+                            <div class="text-body-2 font-weight-medium">-{{ money(selected.couponDiscountTotal,
+                                selected.currency) }}</div>
+                        </div>
+
+                        <div class="d-flex justify-space-between mb-2">
+                            <div class="text-body-2 text-medium-emphasis">Envío</div>
+                            <div class="text-body-2 font-weight-medium">
+                                <span v-if="selected.shippingTotal === 0">Gratis</span>
+                                <span v-else>{{ money(selected.shippingTotal ?? 0, selected.currency) }}</span>
+                            </div>
+                        </div>
+
+                        <v-divider class="my-3" />
+
+                        <div class="d-flex justify-space-between">
+                            <div class="text-body-1 font-weight-bold">Total pagado</div>
+                            <div class="text-body-1 font-weight-bold">
+                                {{ money(selected.totalPaid ?? selected.total ?? 0, selected.currency) }}
+                            </div>
+                        </div>
+                    </v-card>
+
+                    <!-- Líneas -->
+                    <v-card v-if="selected.lines?.length" rounded="lg" class="lines-card pa-4 mt-4" elevation="0">
+                        <div class="d-flex align-center justify-space-between mb-3">
+                            <div class="text-subtitle-2 font-weight-bold">Artículos</div>
+                            <v-chip size="small" rounded="lg" variant="tonal">
+                                {{ selected.lines.length }} línea(s)
+                            </v-chip>
+                        </div>
+
+                        <div class="lines-list">
+                            <div v-for="(l, i) in selected.lines" :key="`${l.product_id}-${i}`" class="line-row">
+                                <div class="d-flex align-center ga-3">
+                                    <v-avatar rounded="lg" size="44" class="bg-grey-lighten-4">
+                                        <v-img v-if="l.image_path" :src="l.image_path" cover />
+                                        <v-icon v-else icon="mdi-tshirt-crew-outline" />
+                                    </v-avatar>
+
+                                    <div class="flex-grow-1 min-w-0">
+                                        <div class="text-body-2 font-weight-medium text-truncate">
+                                            {{ l.name || 'Producto' }}
+                                        </div>
+                                        <div class="text-caption text-medium-emphasis">
+                                            {{ l.quantity }} × {{ money(l.unit_price ?? 0, selected.currency || 'EUR')
+                                            }}
+                                        </div>
+                                    </div>
+
+                                    <div class="text-right">
+                                        <div class="text-body-2 font-weight-bold">
+                                            {{ money(l.line_total ?? 0, selected.currency || 'EUR') }}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <v-divider class="my-3" />
+                            </div>
+                        </div>
+                    </v-card>
                 </v-card-text>
-
-                <v-card-actions class="px-4 pb-4">
-                    <v-spacer />
-                    <v-btn class="text-none" variant="text" @click="detailsOpen = false">
-                        Cerrar
-                    </v-btn>
-                </v-card-actions>
             </v-card>
+
+            <!-- Snack -->
+            <v-snackbar v-model="snack.open" :timeout="2200" rounded="lg">
+                {{ snack.text }}
+            </v-snackbar>
         </v-dialog>
     </v-container>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, onMounted, watch, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '../stores/auth'
+import axios from 'axios'
 
 const router = useRouter()
-const auth = useAuthStore()
 
 const statusFilter = ref('ALL')
 const detailsOpen = ref(false)
@@ -181,11 +290,20 @@ const selected = ref(null)
 const statusOptions = [
     { value: 'ALL', label: 'Todos' },
     { value: 'COMPLETED', label: 'Completados' },
-    { value: 'FAILED', label: 'Fallidos' },
+    { value: 'FAILED', label: 'Cancelados' },
     { value: 'UNKNOWN', label: 'Otros' },
 ]
 
+const hasAnyOrders = computed(() => orders.value.length > 0)
+
 const orders = ref([])
+const loading = ref(false)
+const loadError = ref('')
+
+const page = ref(1)
+const pageSize = 4
+
+const snack = reactive({ open: false, text: '' })
 
 const filteredOrders = computed(() => {
     const list = [...orders.value].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
@@ -193,54 +311,117 @@ const filteredOrders = computed(() => {
     return list.filter(o => (o.status || 'UNKNOWN') === statusFilter.value)
 })
 
-function ordersKeyFor(userId) {
-  return userId ? `tiendamoda_orders_u${userId}` : 'tiendamoda_orders_guest'
+const pageCount = computed(() => {
+    const n = filteredOrders.value.length
+    return Math.max(1, Math.ceil(n / pageSize))
+})
+
+const pagedOrders = computed(() => {
+    const start = (page.value - 1) * pageSize
+    return filteredOrders.value.slice(start, start + pageSize)
+})
+
+function normalizeStatus(orderStatus, paymentStatus) {
+    if (paymentStatus === 'success' || orderStatus === 'paid') return 'COMPLETED'
+    if (paymentStatus === 'failed' || orderStatus === 'cancelled') return 'FAILED'
+    return 'UNKNOWN'
 }
 
-const STORAGE_KEY = computed(() => ordersKeyFor(auth.user?.id ?? null))
+function mapApiOrder(o) {
+    const id = String(o?.id ?? '')
+    const createdAt = o?.created_at ? Date.parse(o.created_at) : Date.now()
 
-function reload() {
-    orders.value = loadOrders()
-}
+    const paymentToken = o?.payment?.transaction_id ? String(o.payment.transaction_id) : ''
+    const paymentStatus = o?.payment?.status ? String(o.payment.status) : null
 
-function loadOrders() {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY.value)
-        if (!raw) return []
-        const parsed = JSON.parse(raw)
-        if (!Array.isArray(parsed)) return []
-        return parsed.map(normalizeOrder).filter(Boolean)
-    } catch {
-        return []
-    }
-}
+    const statusKey = normalizeStatus(String(o?.status ?? ''), paymentStatus)
 
-watch(
-    () => STORAGE_KEY.value,
-    () => reload(),
-    { immediate: true }
-)
+    const subtotal = Number(o?.subtotal ?? 0)
+    const discountTotal = Number(o?.discount_total ?? 0)
+    const couponDiscountTotal = Number(o?.coupon_discount_total ?? 0)
 
-function normalizeOrder(o) {
-    if (!o) return null
-    const id = String(o.id || o.token || '')
-    const token = String(o.token || o.id || '')
-    const createdAt = Number(o.createdAt || Date.now())
-    const status = String(o.status || 'UNKNOWN')
-    const total = o.total != null ? Number(o.total) : null
-    const currency = String(o.currency || 'EUR')
+    const totalBase = Number(o?.total_base ?? (subtotal - discountTotal - couponDiscountTotal))
+    const totalPaid = (o?.total_paid != null) ? Number(o.total_paid) : (o?.payment?.amount != null ? Number(o.payment.amount) : null)
+
+    const total = (o?.total != null) ? Number(o.total) : (totalPaid ?? totalBase)
+
+    const shippingTotal =
+        (o?.shipping_total != null)
+            ? Number(o.shipping_total)
+            : (totalPaid != null ? Math.max(0, Number((totalPaid - totalBase).toFixed(2))) : null)
+
+    const itemsCount = o?.items_count != null ? Number(o.items_count) : null
 
     return {
         id,
         idShort: id.length > 10 ? id.slice(0, 10) + '…' : id,
-        token,
-        tokenShort: token.length > 10 ? token.slice(0, 10) + '…' : token,
         createdAt,
-        status,
+
+        status: statusKey,
+        statusLabel:
+            statusKey === 'COMPLETED' ? 'COMPLETADO' :
+                statusKey === 'FAILED' ? 'CANCELADO' :
+                    'OTRO',
+
+        currency: 'EUR',
+
+        subtotal,
+        discountTotal,
+        couponDiscountTotal,
+        totalBase,
+        shippingTotal,
+        totalPaid,
+
         total,
-        currency,
-        itemsCount: o.itemsCount ?? null,
-        failureReason: o.failureReason ?? null,
+
+        itemsCount,
+        token: paymentToken,
+        tokenShort: paymentToken.length > 10 ? paymentToken.slice(0, 10) + '…' : paymentToken,
+
+        failureReason: null,
+        lines: Array.isArray(o?.lines) ? o.lines : [],
+    }
+}
+
+async function copy(text) {
+    try {
+        await navigator.clipboard.writeText(String(text || ''))
+        snack.text = 'Copiado al portapapeles'
+        snack.open = true
+    } catch {
+        snack.text = 'No se pudo copiar'
+        snack.open = true
+    }
+}
+
+async function reload() {
+    loading.value = true
+    loadError.value = ''
+
+    try {
+        let resp
+        try {
+            resp = await axios.get('/api/orders')
+        } catch (e) {
+            if (e?.response?.status === 419) {
+                await axios.get('/sanctum/csrf-cookie')
+                resp = await axios.get('/api/orders')
+            } else {
+                throw e
+            }
+        }
+
+        const list = resp?.data?.data ?? []
+        orders.value = Array.isArray(list) ? list.map(mapApiOrder) : []
+    } catch (e) {
+        loadError.value =
+            e?.response?.data?.message ||
+            e?.message ||
+            'No se pudieron cargar los pedidos.'
+        orders.value = []
+        console.error(e)
+    } finally {
+        loading.value = false
     }
 }
 
@@ -275,6 +456,23 @@ function openDetails(o) {
 function goShop() {
     router.push({ name: 'shop' })
 }
+
+watch(statusFilter, () => {
+    page.value = 1
+})
+
+watch(
+    () => orders.value.length,
+    () => {
+        if (page.value > pageCount.value) page.value = 1
+    }
+)
+
+watch(page, () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+})
+
+onMounted(() => reload())
 </script>
 
 <style scoped>
@@ -295,6 +493,93 @@ function goShop() {
 
 .min-w-0 {
     min-width: 0;
+}
+
+.details-card {
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.12);
+    background: #fff;
+}
+
+.details-title {
+    padding: 18px 18px 14px 18px;
+}
+
+.details-icon {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.total-pill {
+    min-width: 220px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: rgba(0, 0, 0, 0.015);
+}
+
+.info-card,
+.lines-card {
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: rgba(0, 0, 0, 0.01);
+}
+
+.info-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+}
+
+@media (min-width: 700px) {
+    .info-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+.info-item .label {
+    font-size: 0.75rem;
+    color: rgba(0, 0, 0, 0.55);
+    margin-bottom: 4px;
+}
+
+.info-item .value {
+    font-weight: 600;
+}
+
+.mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 360px;
+    display: inline-block;
+}
+
+.details-card {
+    background: #fff;
+}
+
+.details-title {
+    padding: 16px 18px;
+}
+
+.details-icon {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.total-pill {
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: rgba(0, 0, 0, 0.015);
+    min-width: 180px;
+}
+
+.breakdown-card,
+.payinfo-card,
+.lines-card {
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: rgba(0, 0, 0, 0.012);
+}
+
+.lines-list .line-row:last-child .v-divider {
+    display: none;
 }
 
 .list-enter-active,

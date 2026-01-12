@@ -171,13 +171,12 @@
                         </div>
 
                         <v-btn block color="primary" size="large" rounded="lg" class="text-none mt-5"
-                            prepend-icon="mdi-lock-outline" :loading="isPaying"
-                            :disabled="cart.isEmpty || isPaying || !isAuthenticated" @click="startCheckout">
-                            Continuar al pago
+                            prepend-icon="mdi-lock-outline" :disabled="cart.isEmpty" @click="goToCheckout">
+                            Continuar con el pago
                         </v-btn>
 
-                        <div class="text-caption text-medium-emphasis mt-3">
-                            Al continuar, se abrirá la pasarela de pago (TPV) para completar la compra.
+                        <div v-if="!isAuthenticated" class="text-caption text-medium-emphasis mt-2">
+                            Para finalizar la compra tendrás que iniciar sesión.
                         </div>
                     </v-card>
                 </v-col>
@@ -210,38 +209,18 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, watch } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import axios from 'axios'
+import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useCartStore } from '@/stores/cart'
 import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
-const route = useRoute()
 const cart = useCartStore()
 const auth = useAuthStore()
 
 const clearDialog = ref(false)
-const isPaying = ref(false)
-const paymentError = ref('')
 
 const isAuthenticated = computed(() => auth.isAuthenticated)
-
-function redirectToLogin() {
-    router.replace({
-        path: '/login',
-        query: { redirect: route.fullPath || '/cart' },
-    })
-}
-
-onMounted(() => {
-    if (!isAuthenticated.value) redirectToLogin()
-})
-
-// Si se desloguea mientras está en el carrito, lo echamos a login.
-watch(isAuthenticated, (logged) => {
-    if (!logged) redirectToLogin()
-})
 
 const items = computed(() => {
     return cart.items.map((it) => {
@@ -271,7 +250,6 @@ const items = computed(() => {
 const subtotal = computed(() => cart.subtotal)
 
 const shipping = computed(() => {
-    // ejemplo simple: gratis desde 60€, si no 4.99€
     if (cart.isEmpty) return 0
     return subtotal.value >= 60 ? 0 : 4.99
 })
@@ -313,48 +291,11 @@ function confirmClear() {
     clearDialog.value = false
 }
 
-async function startCheckout() {
-    paymentError.value = ''
-
-    if (!auth.isAuthenticated) {
-        router.push({ name: 'login', query: { redirect: '/cart' } })
-        return
-    }
-
-    isPaying.value = true
-
-    try {
-        const amount = Number(total.value.toFixed(2))
-
-        const resp = await axios.post('/api/checkout/start', { amount })
-        const paymentUrl = resp?.data?.paymentUrl
-        const token = resp?.data?.token
-
-        if (!paymentUrl || !token) {
-            throw new Error('No se recibió paymentUrl/token desde el backend.')
-        }
-
-        localStorage.setItem('tiendamoda_pending_order', JSON.stringify({
-            id: token,
-            token,
-            createdAt: Date.now(),
-            status: 'PENDING',
-            total: amount,
-            currency: 'EUR',
-            itemsCount: cart.totalItems,
-        }))
-
-        window.location.href = paymentUrl
-    } catch (e) {
-        paymentError.value =
-            e?.response?.data?.message ||
-            e?.message ||
-            'No se pudo iniciar el pago. Inténtalo de nuevo.'
-    } finally {
-        isPaying.value = false
-    }
+function goToCheckout() {
+    router.push({ name: 'checkout' })
 }
 </script>
+
 
 <style scoped>
 .premium-surface {
