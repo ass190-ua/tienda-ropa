@@ -81,7 +81,7 @@ const wishlist = useWishlistStore()
 const slides = [
     {
         src: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?q=80&w=2070&auto=format&fit=crop',
-        title: 'Nueva Colección 2024',
+        title: 'Nueva Colección 2026',
         subtitle: 'Tendencias que definen tu estilo'
     },
     {

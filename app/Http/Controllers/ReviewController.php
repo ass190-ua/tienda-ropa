@@ -18,10 +18,8 @@ class ReviewController extends Controller
      */
     public function index(Product $product)
     {
-        $reviews = $this->reviewService->listForProduct($product);
-        //como admin se tiene q llamar: $reviews 
-        //$this->reviewService->listForProduct($product, true);
-
+        // Pasamos 'false' para que NO incluya las pendientes/rechazadas
+        $reviews = $this->reviewService->listForProduct($product, false);
 
         return response()->json($reviews);
     }
@@ -39,6 +37,7 @@ class ReviewController extends Controller
 
         $user = $request->user();
 
+        // El servicio se encarga de ponerla en status 'pending'
         $review = $this->reviewService->createForProduct(
             $user,
             $product,
@@ -46,6 +45,7 @@ class ReviewController extends Controller
             $data['comment'] ?? null
         );
 
+        // Cargamos los datos del usuario para devolver la respuesta completa
         $review->load('user');
 
         return response()->json($review, 201);
@@ -80,7 +80,7 @@ class ReviewController extends Controller
     {
         // Aseguramos que la review pertenece a ese producto
         if ((int)$review->product_id !== (int)$product->id) {
-            abort(404);
+            abort(404, 'La reseña no pertenece a este producto.');
         }
 
         $data = $request->validate([
@@ -88,6 +88,7 @@ class ReviewController extends Controller
             'comment' => ['nullable', 'string', 'max:2000'],
         ]);
 
+        // El servicio valida que sea el dueño y la pone en 'pending'
         $updated = $this->reviewService->updateByUser(
             $request->user(),
             $review,
@@ -99,5 +100,4 @@ class ReviewController extends Controller
 
         return response()->json($updated);
     }
-
 }

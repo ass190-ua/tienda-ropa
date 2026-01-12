@@ -197,4 +197,9 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
     Route::get('/orders/export', [App\Http\Controllers\Admin\AdminOrderController::class, 'export']);
     Route::get('/orders/{id}', [App\Http\Controllers\Admin\AdminOrderController::class, 'show']);
     Route::put('/orders/{id}', [App\Http\Controllers\Admin\AdminOrderController::class, 'update']);
+
+    // GESTIÓN DE REVIEWS
+    Route::get('/reviews', [App\Http\Controllers\Admin\AdminReviewController::class, 'index']); // <--- ESTA FALTABA
+    Route::delete('/reviews/{review}', [App\Http\Controllers\Admin\AdminReviewController::class, 'reject']);
+    Route::patch('/reviews/{review}/approve', [App\Http\Controllers\Admin\AdminReviewController::class, 'approve']);
 });
