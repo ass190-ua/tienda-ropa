@@ -30,7 +30,7 @@ RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-av
 RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
 
 # 9. Instalamos dependencias de PHP (Backend)
-RUN composer install --no-dev --optimize-autoloader
+RUN composer install --optimize-autoloader
 
 # 10. Instalamos dependencias de JS y construimos el Frontend (Vue)
 RUN npm install && npm run build
