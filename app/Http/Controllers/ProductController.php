@@ -134,13 +134,157 @@ class ProductController extends Controller
         return response()->json($product);
     }
 
-
-    public function featuredProducts()
+    public function grouped(Request $request)
     {
-        $products = Product::with('images')
-            ->inRandomOrder()
-            ->limit(12)
-            ->get();
+        $query = Product::query()
+            ->select('name', 'category_id', 'type_id')
+            ->selectRaw('MIN(id) as id, MIN(price) as price')
+            ->groupBy('name', 'category_id', 'type_id')
+            ->with(['images']);
+
+        // ✅ Filtrar por category (igual que en index/filters)
+        if ($request->filled('category')) {
+            $categoryIds = $this->resolveCategoryIdsFromName($request->query('category'));
+            if (!empty($categoryIds)) {
+                $query->whereIn('category_id', $categoryIds);
+            }
+        }
+
+        // ✅ (Opcional) filtrar por types si algún día lo pasas desde el front
+        if ($request->filled('types')) {
+            $ids = $this->csvToIntArray($request->query('types'));
+            if (!empty($ids)) $query->whereIn('type_id', $ids);
+        }
+
+        $products = $query->get()->map(function ($p) {
+            $groupProductIds = Product::where('name', $p->name)
+                ->where('category_id', $p->category_id)
+                ->where('type_id', $p->type_id)
+                ->orderBy('id')
+                ->pluck('id')
+                ->values();
+
+            $colors = Product::where('name', $p->name)
+                ->where('category_id', $p->category_id)
+                ->where('type_id', $p->type_id)
+                ->with('color:id,value')
+                ->get()
+                ->pluck('color')
+                ->filter()
+                ->unique('id')
+                ->values();
+
+            $sizes = Product::where('name', $p->name)
+                ->where('category_id', $p->category_id)
+                ->where('type_id', $p->type_id)
+                ->with('size:id,value')
+                ->get()
+                ->pluck('size')
+                ->filter()
+                ->unique('id')
+                ->values();
+
+            return [
+                'id' => $p->id,
+                'name' => $p->name,
+                'price' => $p->price,
+                'category_id' => $p->category_id,
+                'type_id' => $p->type_id,
+                'images' => $p->images,
+                'colors' => $colors,
+                'sizes' => $sizes,
+                'representative_id' => $groupProductIds->first() ?? $p->id,
+                'product_ids' => $groupProductIds,
+            ];
+        });
+
+        return response()->json($products);
+    }
+
+    public function groupedByIds(Request $request)
+    {
+        $ids = $request->input('ids', []);
+        if (!is_array($ids)) $ids = [];
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), fn($n) => $n > 0)));
+
+        if (empty($ids)) {
+            return response()->json([]);
+        }
+
+        // Primero obtenemos los productos que están en wishlist (variantes)
+        $seedProducts = Product::query()
+            ->whereIn('id', $ids)
+            ->get(['id', 'name', 'category_id', 'type_id']);
+
+        if ($seedProducts->isEmpty()) {
+            return response()->json([]);
+        }
+
+        // Generamos las claves de grupo (name + category_id + type_id)
+        $groups = $seedProducts->map(fn($p) => [
+            'name' => $p->name,
+            'category_id' => $p->category_id,
+            'type_id' => $p->type_id,
+        ])->unique()->values();
+
+        // Construimos una query OR por cada grupo
+        $query = Product::query()
+            ->select('name', 'category_id', 'type_id')
+            ->selectRaw('MIN(id) as id, MIN(price) as price')
+            ->groupBy('name', 'category_id', 'type_id')
+            ->with(['images']);
+
+        $query->where(function ($q) use ($groups) {
+            foreach ($groups as $g) {
+                $q->orWhere(function ($qq) use ($g) {
+                    $qq->where('name', $g['name'])
+                        ->where('category_id', $g['category_id'])
+                        ->where('type_id', $g['type_id']);
+                });
+            }
+        });
+
+        $products = $query->get()->map(function ($p) {
+            $groupProductIds = Product::where('name', $p->name)
+                ->where('category_id', $p->category_id)
+                ->where('type_id', $p->type_id)
+                ->orderBy('id')
+                ->pluck('id')
+                ->values();
+
+            $colors = Product::where('name', $p->name)
+                ->where('category_id', $p->category_id)
+                ->where('type_id', $p->type_id)
+                ->with('color:id,value')
+                ->get()
+                ->pluck('color')
+                ->filter()
+                ->unique('id')
+                ->values();
+
+            $sizes = Product::where('name', $p->name)
+                ->where('category_id', $p->category_id)
+                ->where('type_id', $p->type_id)
+                ->with('size:id,value')
+                ->get()
+                ->pluck('size')
+                ->filter()
+                ->unique('id')
+                ->values();
+
+            return [
+                'id' => $p->id,
+                'representative_id' => $groupProductIds->first() ?? $p->id,
+                'product_ids' => $groupProductIds,
+                'name' => $p->name,
+                'price' => $p->price,
+                'category_id' => $p->category_id,
+                'type_id' => $p->type_id,
+                'images' => $p->images,
+                'colors' => $colors,
+                'sizes' => $sizes,
+            ];
+        });
 
         return response()->json($products);
     }

@@ -13,15 +13,20 @@
                 </div>
 
                 <div class="text-medium-emphasis text-body-2">
-                    Mostrando {{ showingLabel }} de {{ meta.total }}
-                    <template v-if="pageCount > 1"> · Página {{ page }} de {{ pageCount }}</template>
+                    <template v-if="loading || !baseLoaded">
+                        Cargando productos…
+                    </template>
+                    <template v-else>
+                        Mostrando {{ showingLabel }} de {{ meta.total }}
+                        <template v-if="pageCount > 1"> · Página {{ page }} de {{ pageCount }}</template>
+                    </template>
                 </div>
             </div>
 
             <div class="d-flex align-center ga-3">
                 <div class="text-body-2 text-medium-emphasis">Ordenar:</div>
                 <v-select v-model="sort" :items="sortItems" density="comfortable" variant="outlined" hide-details
-                    class="sort" />
+                    class="sort" :disabled="loading || !baseLoaded" />
             </div>
         </div>
 
@@ -33,7 +38,7 @@
             <!-- Filtros (sticky en desktop) -->
             <v-col cols="12" md="3">
                 <div class="filters-sticky">
-                    <v-card rounded="xl" elevation="2" class="pa-4 filter-card">
+                    <v-card rounded="xl" elevation="2" class="pa-4 filter-card" :disabled="loading || !baseLoaded">
                         <div class="d-flex align-center justify-space-between mb-3">
                             <div class="text-subtitle-1 font-weight-bold d-flex align-center ga-2">
                                 <v-icon icon="mdi-tune-variant" size="18" class="text-medium-emphasis" />
@@ -51,28 +56,49 @@
 
                         <div class="filter-section">
                             <div class="text-body-2 font-weight-bold mb-2">Talla</div>
-                            <div class="d-flex flex-wrap ga-2">
-                                <v-btn v-for="s in sizes" :key="s" size="small" rounded="lg" class="text-none"
-                                    :variant="selectedSizes.includes(s) ? 'flat' : 'outlined'"
-                                    :color="selectedSizes.includes(s) ? 'primary' : undefined" @click="toggleSize(s)">
-                                    {{ s }}
-                                </v-btn>
-                            </div>
+
+                            <template v-if="filtersLoading">
+                                <div class="d-flex flex-wrap ga-2">
+                                    <v-skeleton-loader v-for="i in 6" :key="'sk-size-' + i" type="chip"
+                                        class="sk-chip" />
+                                </div>
+                            </template>
+
+                            <template v-else>
+                                <div class="d-flex flex-wrap ga-2">
+                                    <v-btn v-for="s in sizes" :key="s" size="small" rounded="lg" class="text-none"
+                                        :variant="selectedSizes.includes(s) ? 'flat' : 'outlined'"
+                                        :color="selectedSizes.includes(s) ? 'primary' : undefined"
+                                        @click="toggleSize(s)">
+                                        {{ s }}
+                                    </v-btn>
+                                </div>
+                            </template>
                         </div>
 
                         <v-divider class="my-4" />
 
                         <div class="filter-section">
                             <div class="text-body-2 font-weight-bold mb-2">Color</div>
-                            <div class="d-flex flex-wrap ga-2">
-                                <v-btn v-for="c in colors" :key="c.name" icon size="small"
-                                    :variant="selectedColors.includes(c.name) ? 'flat' : 'text'"
-                                    :color="selectedColors.includes(c.name) ? 'primary' : undefined" class="color-btn"
-                                    @click="toggleColor(c.name)" :aria-label="c.name">
-                                    <span class="dot" :class="{ selected: selectedColors.includes(c.name) }"
-                                        :style="{ background: c.hex }" :title="c.name"></span>
-                                </v-btn>
-                            </div>
+
+                            <template v-if="filtersLoading">
+                                <div class="d-flex flex-wrap ga-2">
+                                    <v-skeleton-loader v-for="i in 8" :key="'sk-color-' + i" type="avatar"
+                                        class="sk-dot" />
+                                </div>
+                            </template>
+
+                            <template v-else>
+                                <div class="d-flex flex-wrap ga-2">
+                                    <v-btn v-for="c in colors" :key="c.name" icon size="small"
+                                        :variant="selectedColors.includes(c.name) ? 'flat' : 'text'"
+                                        :color="selectedColors.includes(c.name) ? 'primary' : undefined"
+                                        class="color-btn" @click="toggleColor(c.name)" :aria-label="c.name">
+                                        <span class="dot" :class="{ selected: selectedColors.includes(c.name) }"
+                                            :style="{ background: c.hex }" :title="c.name"></span>
+                                    </v-btn>
+                                </div>
+                            </template>
                         </div>
 
                         <v-divider class="my-4" />
@@ -93,10 +119,19 @@
 
                         <div class="filter-section">
                             <div class="text-body-2 font-weight-bold mb-2">Tipo</div>
-                            <div class="d-flex flex-column ga-1">
-                                <v-checkbox v-for="b in brands" :key="b" v-model="selectedBrands" :value="b"
-                                    hide-details density="compact" :label="b" />
-                            </div>
+
+                            <template v-if="filtersLoading">
+                                <div class="d-flex flex-column ga-2">
+                                    <v-skeleton-loader v-for="i in 4" :key="'sk-type-' + i" type="list-item" />
+                                </div>
+                            </template>
+
+                            <template v-else>
+                                <div class="d-flex flex-column ga-1">
+                                    <v-checkbox v-for="b in brands" :key="b" v-model="selectedBrands" :value="b"
+                                        hide-details density="compact" :label="b" />
+                                </div>
+                            </template>
                         </div>
                     </v-card>
                 </div>
@@ -127,9 +162,15 @@
                     </v-chip>
                 </TransitionGroup>
 
+                <!-- Loading (skeletons) -->
+                <div v-if="loading || !baseLoaded" class="v-row gy-6">
+                    <v-col v-for="i in skeletons" :key="'sk-' + i" cols="12" sm="6" lg="4">
+                        <v-skeleton-loader type="image, heading, text" class="rounded-xl" />
+                    </v-col>
+                </div>
 
                 <!-- Grid con transiciones -->
-                <TransitionGroup name="grid" tag="div" class="v-row gy-6">
+                <TransitionGroup v-else name="grid" tag="div" class="v-row gy-6">
                     <v-col v-for="p in products" :key="p.id" cols="12" sm="6" lg="4">
                         <v-hover v-slot="{ isHovering, props: hoverProps }">
                             <v-card v-bind="hoverProps" rounded="xl" :elevation="isHovering ? 6 : 2"
@@ -139,19 +180,17 @@
                                         class="rounded-xl product-img" role="button" tabindex="0"
                                         @click="openQuickView(p)" @keydown.enter.prevent="openQuickView(p)">
                                         <!-- Overlay con solo “Añadir” -->
-                                        <div class="img-overlay">
-                                            <v-btn color="primary" variant="flat" rounded="lg" class="text-none"
-                                                @click.stop="addFromCard(p)">
-                                                <v-icon icon="mdi-cart-outline" class="mr-2" />
-                                                Añadir
+                                        <div class="img-overlay" :class="{ show: isHovering || smAndDown }">
+                                            <v-btn class="btn-quick text-none" rounded="lg"
+                                                @click.stop="openQuickView(p)" aria-label="Abrir vista rápida">
+                                                <v-icon icon="mdi-eye-outline" class="mr-2" />
+                                                Vista rápida
                                             </v-btn>
                                         </div>
                                     </v-img>
                                 </div>
 
                                 <v-card-text class="pt-4">
-                                    <div class="text-medium-emphasis text-body-2">—</div>
-
                                     <v-tooltip location="top" :text="p.name">
                                         <template #activator="{ props: tip }">
                                             <div class="product-title text-subtitle-1 font-weight-bold" v-bind="tip">
@@ -165,19 +204,18 @@
                                         </div>
 
                                         <v-btn icon variant="text" size="small"
-                                            :aria-label="wishlist.isInWishlist(p.id) ? 'Quitar de favoritos' : 'Añadir a favoritos'"
-                                            @click.stop="toggleWishlist(p.id)">
+                                            :aria-label="wishlist.isGroupInWishlist(p.product_ids) ? 'Quitar de favoritos' : 'Añadir a favoritos'"
+                                            @click.stop="toggleWishlistGroup(p)">
                                             <v-icon
-                                                :icon="wishlist.isInWishlist(p.id) ? 'mdi-heart' : 'mdi-heart-outline'" />
+                                                :icon="wishlist.isGroupInWishlist(p.product_ids) ? 'mdi-heart' : 'mdi-heart-outline'" color="red" />
                                         </v-btn>
-
                                     </div>
                                 </v-card-text>
                             </v-card>
                         </v-hover>
                     </v-col>
 
-                    <v-col v-if="products.length === 0 && !loading" cols="12" key="no-results">
+                    <v-col v-if="baseLoaded && !loading && products.length === 0" cols="12" key="no-results">
                         <v-alert type="info" variant="tonal">
                             <template v-if="hasQuery">
                                 No hay resultados para “{{ query }}”.
@@ -216,21 +254,21 @@
 <script setup>
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
+import { useDisplay } from 'vuetify'
 import VistaRapidaDialog from './VistaRapidaDialog.vue'
 import { useCartStore } from '../stores/cart'
 import { useWishlistStore } from '../stores/wishlist'
 import axios from 'axios'
 
 const route = useRoute();
+const cart = useCartStore()
+const { smAndDown } = useDisplay()
 
 const props = defineProps({
     query: { type: String, required: true },
 })
 
-const cart = useCartStore()
-
 const syncing = ref(false)
-
 
 const routeCategory = computed(() => (route.query.category ?? '').toString().trim())
 const routeType = computed(() => (route.query.type ?? '').toString().trim())
@@ -257,21 +295,23 @@ const contextTitle = computed(() => {
     return `Tienda · ${cat}`
 })
 
-const contextLine = computed(() => {
-    const parts = []
-    if (routeCategory.value) parts.push(`Sección: ${routeCategory.value}`)
-    if (routeType.value) parts.push(`Tipo: ${routeType.value}`)
-    return parts.join(' · ')
-})
-
 const sortItems = ['Más relevantes', 'Precio: menor a mayor', 'Precio: mayor a menor']
 const sort = ref('Más relevantes')
 
 const page = ref(1)
 const perPage = 12
 
+const skeletons = computed(() => Array.from({ length: perPage }, (_, i) => i))
+
 const products = ref([])
-const loading = ref(false)
+const groupedBase = ref([])
+const loading = ref(true)
+const baseLoaded = ref(false)
+const hasLoadedOnce = ref(false)
+const filtersEmpty = computed(() =>
+    sizes.value.length === 0 && colors.value.length === 0 && brands.value.length === 0
+)
+const filtersLoading = computed(() => syncing.value && filtersEmpty.value)
 const error = ref(null)
 
 const meta = ref({ total: 0, from: 0, to: 0, last_page: 1 })
@@ -358,15 +398,31 @@ const placeholderImg =
 function productImage(p) {
     const imgs = Array.isArray(p?.images) ? p.images : []
     const first = imgs[0]
-    return first?.url ?? first?.path ?? first?.src ?? p?.image ?? p?.image_url ?? null
+
+    const url =
+        first?.url ?? first?.path ?? first?.src ??
+        p?.image ?? p?.image_url ?? null
+
+    return url || `https://picsum.photos/seed/tiendamoda-${p?.id ?? 'x'}/800/700`
 }
 
 onMounted(async () => {
+    loading.value = true
     syncing.value = true
+
     try {
         await fetchFilters()
         applyRoutePreset()
-        await fetchFilters(true)
+
+        // en paralelo mientras tanto
+        const basePromise = fetchGroupedBase()
+
+        // solo si hay tipo preseleccionado
+        if (selectedBrands.value.length > 0) {
+            await fetchFilters(true)
+        }
+
+        await basePromise
     } finally {
         syncing.value = false
     }
@@ -437,24 +493,33 @@ function buildIdsParam(selectedNames, idsByName) {
     return ids.join(',')
 }
 
-function normalizeProduct(p) {
-    const img =
-        (p.images?.[0]?.url ?? p.images?.[0]?.path ?? null) ||
-        `https://picsum.photos/seed/${p.url ?? `tiendamoda-${p.id}`}/800/700`
+async function fetchGroupedBase() {
+    baseLoaded.value = false
 
-    const sizeName = maps.value.sizeById[p.size_id] ?? (p.size_id ? `Talla ${p.size_id}` : null)
-    const colorName = maps.value.colorById[p.color_id] ?? (p.color_id ? `Color ${p.color_id}` : null)
-    const typeName = maps.value.typeById[p.type_id] ?? 'TiendaModa'
+    try {
+        const params = {}
+        if (routeCategory.value) params.category = routeCategory.value
 
-    return {
-        id: p.id,
-        name: p.name ?? '',
-        brand: typeName,
-        price: Number(p.price ?? 0),
-        sizes: sizeName ? [sizeName] : [],
-        colors: colorName ? [colorName] : [],
-        image: img,
-        raw: p,
+        const { data } = await axios.get('/api/products/grouped', { params })
+
+        groupedBase.value = (Array.isArray(data) ? data : []).map(p => ({
+            id: p.id,
+            representative_id: p.representative_id ?? p.id,
+            product_ids: Array.isArray(p.product_ids) ? p.product_ids : [p.id],
+
+            name: p.name ?? '',
+            price: Number(p.price ?? 0),
+            images: Array.isArray(p.images) ? p.images : [],
+            colors: Array.isArray(p.colors) ? p.colors : [],
+            sizes: Array.isArray(p.sizes) ? p.sizes : [],
+            type_id: p.type_id ?? null,
+            category_id: p.category_id ?? null,
+        }))
+    } catch (e) {
+        console.error(e)
+        groupedBase.value = []
+    } finally {
+        baseLoaded.value = true
     }
 }
 
@@ -463,35 +528,70 @@ async function fetchProducts() {
     error.value = null
 
     try {
-        const sortParam =
-            sort.value === 'Precio: menor a mayor' ? 'price_asc' :
-                sort.value === 'Precio: mayor a menor' ? 'price_desc' :
-                    'relevance'
-
-        const params = {
-            page: page.value,
-            per_page: perPage,
-            q: (props.query ?? '').trim(),
-            sort: sortParam,
-            price_min: price.value[0],
-            price_max: price.value[1],
-            sizes: buildIdsParam(selectedSizes.value, maps.value.sizeIdsByName),
-            colors: buildIdsParam(selectedColors.value, maps.value.colorIdsByName),
-            types: buildIdsParam(selectedBrands.value, maps.value.typeIdsByName),
+        if (!baseLoaded.value) {
+            await fetchGroupedBase()
         }
-        if (routeCategory.value) params.category = routeCategory.value
 
-        const { data } = await axios.get('/api/products', { params })
+        let list = Array.isArray(groupedBase.value) ? [...groupedBase.value] : []
 
-        products.value = (data.data ?? []).map(normalizeProduct)
+        // Búsqueda
+        const q = (props.query ?? '').trim().toLowerCase()
+        if (q) list = list.filter(p => (p.name ?? '').toLowerCase().includes(q))
+
+        // Precio
+        list = list.filter(p => p.price >= price.value[0] && p.price <= price.value[1])
+
+        // Tallas (por value)
+        if (selectedSizes.value.length > 0) {
+            const wanted = new Set(selectedSizes.value)
+            list = list.filter(p => {
+                const values = (p.sizes ?? []).map(s => (typeof s === 'string' ? s : s?.value)).filter(Boolean)
+                return values.some(v => wanted.has(v))
+            })
+        }
+
+        // Colores (por value)
+        if (selectedColors.value.length > 0) {
+            const wanted = new Set(selectedColors.value)
+            list = list.filter(p => {
+                const values = (p.colors ?? []).map(c => (typeof c === 'string' ? c : c?.value)).filter(Boolean)
+                return values.some(v => wanted.has(v))
+            })
+        }
+
+        // Tipos (por type_id -> nombre con maps)
+        if (selectedBrands.value.length > 0) {
+            list = list.filter(p => {
+                if (!p.type_id) return true
+                const typeName = maps.value.typeById[p.type_id]
+                return typeName ? selectedBrands.value.includes(typeName) : true
+            })
+        }
+
+        // Ordenación
+        if (sort.value === 'Precio: menor a mayor') list.sort((a, b) => a.price - b.price)
+        else if (sort.value === 'Precio: mayor a menor') list.sort((a, b) => b.price - a.price)
+
+        // Paginación (12)
+        const total = list.length
+        const lastPage = Math.max(1, Math.ceil(total / perPage))
+
+        if (page.value > lastPage) {
+            page.value = lastPage
+            return
+        }
+
+        const start = (page.value - 1) * perPage
+        const end = start + perPage
+
+        products.value = list.slice(start, end)
+
         meta.value = {
-            total: data.total ?? 0,
-            from: data.from ?? 0,
-            to: data.to ?? 0,
-            last_page: data.last_page ?? 1,
+            total,
+            from: total ? start + 1 : 0,
+            to: total ? Math.min(end, total) : 0,
+            last_page: lastPage,
         }
-
-        console.log('[SearchPanel] total según API:', meta.value.total, ' | página:', page.value, '/', meta.value.last_page)
     } catch (e) {
         console.error(e)
         error.value = 'No se pudieron cargar los productos.'
@@ -499,6 +599,7 @@ async function fetchProducts() {
         meta.value = { total: 0, from: 0, to: 0, last_page: 1 }
     } finally {
         loading.value = false
+        hasLoadedOnce.value = true
     }
 }
 
@@ -559,32 +660,19 @@ function onAddToCart(payload) {
     snackbar.value.open = true
 }
 
-function addFromCard(product) {
-    onAddToCart({
-        product,
-        qty: 1,
-        size: product?.size_id ?? null,
-        color: product?.color_id ?? null,
-    })
-}
-
 const wishlist = useWishlistStore()
 
+async function toggleWishlistGroup(group) {
+    await wishlist.fetchWishlist()
 
-async function toggleWishlist(productId) {
-    try {
-        if (wishlist.isInWishlist(productId)) {
-            await wishlist.remove(productId)
-            snackbar.value.text = 'Eliminado de favoritos'
-        } else {
-            await wishlist.add(productId)
-            snackbar.value.text = 'Añadido a favoritos'
-        }
-        snackbar.value.open = true
-    } catch (e) {
-        // Si no hay sesión o falla la petición, no rompemos UI
-        snackbar.value.text = 'No se pudo actualizar favoritos'
-        snackbar.value.open = true
+    const productIds = Array.isArray(group.product_ids) ? group.product_ids : [group.id]
+    const existingId = wishlist.findWishlistedProductId(productIds)
+
+    if (existingId) {
+        await wishlist.remove(existingId)
+    } else {
+        const repId = group.representative_id ?? group.id
+        await wishlist.add(repId)
     }
 }
 
@@ -629,6 +717,7 @@ watch(
 )
 
 watch(page, async () => {
+    if (syncing.value) return
     await fetchProducts()
     scrollToTop()
 })
@@ -644,7 +733,12 @@ watch([routeCategory, routeType], async () => {
         page.value = 1
         await fetchFilters()
         applyRoutePreset()
-        await fetchFilters(true)
+
+        if (selectedBrands.value.length > 0) {
+            await fetchFilters(true)
+        }
+
+        await fetchGroupedBase()
         await fetchProducts()
     } finally {
         syncing.value = false
@@ -718,13 +812,12 @@ onBeforeUnmount(() => {
     align-items: flex-end;
     justify-content: center;
     padding: 12px;
-    opacity: 0;
-    transition: opacity 160ms ease;
-    background: linear-gradient(to top, rgba(0, 0, 0, .35), rgba(0, 0, 0, 0) 60%);
-}
 
-:deep(.v-img:hover) .img-overlay {
-    opacity: 1;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 160ms ease, transform 160ms ease;
+
+    background: linear-gradient(to top, rgba(0, 0, 0, .38), rgba(0, 0, 0, 0) 60%);
 }
 
 .img-overlay.show {
@@ -732,13 +825,29 @@ onBeforeUnmount(() => {
     transform: translateY(0);
 }
 
-.btn-overlay {
-    border-color: rgba(255, 255, 255, 0.85) !important;
-    color: #fff !important;
+.btn-quick {
+    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.92) !important;
+    color: rgba(0, 0, 0, 0.88) !important;
+    border: 1px solid rgba(255, 255, 255, 0.65) !important;
+
+    box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
+    height: 44px;
+    padding: 0 18px;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease;
 }
 
-.btn-overlay:hover {
-    background: rgba(255, 255, 255, 0.12);
+.btn-quick:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.98) !important;
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.22);
+}
+
+.img-overlay.show {
+    opacity: 1;
+    transform: translateY(0);
 }
 
 .pagination-wrap {
@@ -810,5 +919,16 @@ onBeforeUnmount(() => {
 
 .chips-move {
     transition: transform 180ms ease;
+}
+
+.sk-chip :deep(.v-skeleton-loader__chip) {
+    height: 28px;
+    border-radius: 10px;
+}
+
+.sk-dot :deep(.v-skeleton-loader__avatar) {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
 }
 </style>

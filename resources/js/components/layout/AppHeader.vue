@@ -25,50 +25,65 @@
                     <v-card rounded="xl" elevation="6" class="pa-4 shop-mega">
                         <div class="d-flex ga-6">
                             <!-- Columna 1: secciones -->
-                            <div style="min-width: 170px">
+                            <div class="mega-sections">
                                 <div class="text-caption text-medium-emphasis mb-2">SECCIONES</div>
 
-                                <v-list density="compact" nav class="pa-0">
+                                <v-list density="compact" nav class="pa-0 list-sections">
                                     <v-list-item v-for="d in departments" :key="d.key" :active="activeDept === d.key"
-                                        rounded="lg" @mouseenter="activeDept = d.key"
+                                        rounded="lg" class="dept-item" @mouseenter="activeDept = d.key"
                                         @click="goShop({ category: d.categoryRopa })">
-                                        <v-list-item-title>{{ d.label }}</v-list-item-title>
+                                        <template #prepend>
+                                            <v-icon :icon="d.icon" class="dept-icon" />
+                                        </template>
+
+                                        <v-list-item-title class="dept-title">{{ d.label }}</v-list-item-title>
                                     </v-list-item>
                                 </v-list>
                             </div>
 
                             <!-- Columna 2: ropa -->
-                            <div style="min-width: 240px">
-                                <div class="text-caption text-medium-emphasis mb-2">ROPA</div>
+                            <v-fade-transition mode="out-in">
+                                <div class="mega-col" :key="'ropa-' + activeDept">
+                                    <div class="text-caption text-medium-emphasis mb-2">ROPA</div>
 
-                                <div class="d-flex flex-column ga-1">
-                                    <v-btn v-for="t in clothingTypes" :key="t" variant="text"
-                                        class="justify-start text-none"
-                                        @click="goShop({ category: currentDept.categoryRopa, type: t })">
-                                        {{ t }}
-                                    </v-btn>
+                                    <div class="d-flex flex-column ga-1">
+                                        <v-btn variant="text" class="justify-start text-none"
+                                            @click="goShop({ category: currentDept.categoryRopa })">
+                                            Ver todos
+                                        </v-btn>
+
+                                        <v-divider class="my-2" />
+
+                                        <v-btn v-for="t in clothingTypes" :key="t" variant="text"
+                                            class="justify-start text-none"
+                                            @click="goShop({ category: currentDept.categoryRopa, type: t })">
+                                            {{ t }}
+                                        </v-btn>
+                                    </div>
                                 </div>
-                            </div>
+                            </v-fade-transition>
 
                             <!-- Columna 3: zapatos -->
-                            <div style="min-width: 240px">
-                                <div class="text-caption text-medium-emphasis mb-2">ZAPATOS</div>
+                            <v-fade-transition mode="out-in">
+                                <div class="mega-col" :key="'zapatos-' + activeDept">
+                                    <div class="text-caption text-medium-emphasis mb-2">ZAPATOS</div>
 
-                                <div class="d-flex flex-column ga-1">
-                                    <v-btn variant="text" class="justify-start text-none"
-                                        @click="goShop({ category: currentDept.categoryZapatos })">
-                                        Ver todos
-                                    </v-btn>
+                                    <div class="d-flex flex-column ga-1">
+                                        <v-btn variant="text" class="justify-start text-none"
+                                            @click="goShop({ category: currentDept.categoryZapatos })">
+                                            Ver todos
+                                        </v-btn>
 
-                                    <v-divider class="my-2" />
+                                        <v-divider class="my-2" />
 
-                                    <v-btn v-for="t in shoeTypes" :key="t" variant="text"
-                                        class="justify-start text-none"
-                                        @click="goShop({ category: currentDept.categoryZapatos, type: t })">
-                                        {{ t }}
-                                    </v-btn>
+                                        <v-btn v-for="t in shoeTypes" :key="t" variant="text"
+                                            class="justify-start text-none"
+                                            @click="goShop({ category: currentDept.categoryZapatos, type: t })">
+                                            {{ t }}
+                                        </v-btn>
+                                    </div>
                                 </div>
-                            </div>
+                            </v-fade-transition>
                         </div>
                     </v-card>
                 </v-menu>
@@ -129,22 +144,13 @@
                         <v-list-item to="/wishlist" prepend-icon="mdi-heart-outline" title="Wishlist" />
                         <v-list-item to="/orders" prepend-icon="mdi-package-variant-closed" title="Mis Pedidos" />
 
-                        <v-list-item
-                            v-if="auth.user?.is_admin"
-                            to="/admin/dashboard"
-                            prepend-icon="mdi-view-dashboard"
-                            title="Panel Admin"
-                            color="primary"
-                        />
+                        <v-list-item v-if="auth.user?.is_admin" to="/admin/dashboard" prepend-icon="mdi-view-dashboard"
+                            title="Panel Admin" color="primary" />
 
                         <v-divider class="my-2" />
 
-                        <v-list-item
-                            @click="handleLogout"
-                            prepend-icon="mdi-logout"
-                            title="Cerrar Sesión"
-                            color="error"
-                        />
+                        <v-list-item @click="handleLogout" prepend-icon="mdi-logout" title="Cerrar Sesión"
+                            color="error" />
                     </v-list>
                 </v-menu>
             </div>
@@ -177,6 +183,7 @@ const departments = [
     {
         key: 'hombre',
         label: 'Hombre',
+        icon: 'mdi-account',
         categoryRopa: 'Hombre',
         categoryZapatos: 'Zapatos Hombre',
         clothingTypes: ['Camiseta', 'Camisa', 'Chaqueta', 'Pantalón'],
@@ -185,6 +192,7 @@ const departments = [
     {
         key: 'mujer',
         label: 'Mujer',
+        icon: 'mdi-account-outline',
         categoryRopa: 'Mujer',
         categoryZapatos: 'Zapatos Mujer',
         clothingTypes: ['Camiseta', 'Camisa', 'Top', 'Chaqueta', 'Vestido', 'Pantalón', 'Falda'],
@@ -193,6 +201,7 @@ const departments = [
     {
         key: 'nino',
         label: 'Niño',
+        icon: 'mdi-baby-face-outline',
         categoryRopa: 'Niño',
         categoryZapatos: 'Zapatos Niño',
         clothingTypes: ['Camiseta', 'Camisa', 'Chaqueta', 'Pantalón'],
@@ -202,6 +211,7 @@ const departments = [
         key: 'nina',
         label: 'Niña',
         categoryRopa: 'Niña',
+        icon: 'mdi-baby-face-outline',
         categoryZapatos: 'Zapatos Niña',
         clothingTypes: ['Camiseta', 'Top', 'Chaqueta', 'Vestido', 'Pantalón', 'Falda'],
         shoeTypes: ['Zapatilla deportiva', 'Zapato casual', 'Bota'],
@@ -248,11 +258,60 @@ const cartOpen = computed({
 </script>
 
 <style scoped>
+.cart-btn {
+    position: relative;
+}
+
 .shop-mega {
     border: 1px solid rgba(0, 0, 0, .06);
 }
 
-.cart-btn {
-    position: relative;
+/* Columna principal */
+.mega-sections {
+    min-width: 190px;
+    padding: 12px;
+    border-radius: 14px;
+    background: rgba(0, 0, 0, 0.03);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* 👇 clave: que la lista no “pinte” blanco encima */
+.mega-sections :deep(.v-list) {
+    background: transparent !important;
+}
+
+/* opcional: que los items no parezcan “pegados” al borde */
+.mega-sections :deep(.v-list-item) {
+    background: transparent;
+}
+
+/* Columnas secundarias */
+.mega-col {
+    min-width: 240px;
+    padding-top: 4px;
+}
+
+/* Items de sección más “menu principal” */
+.dept-item {
+    margin-bottom: 4px;
+}
+
+/* Cuando está activo, que se note MUCHO */
+.dept-item.v-list-item--active {
+    background: rgba(25, 118, 210, 0.10);
+    /* primary muy suave */
+    border: 1px solid rgba(25, 118, 210, 0.25);
+}
+
+.dept-title {
+    font-weight: 600;
+}
+
+.dept-icon {
+    opacity: 0.8;
+}
+
+.dept-item.v-list-item--active .dept-icon {
+    opacity: 1;
 }
 </style>

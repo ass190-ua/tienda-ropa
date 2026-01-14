@@ -194,7 +194,7 @@
                         <div class="d-flex justify-space-between mb-2">
                             <div class="text-body-2 text-medium-emphasis">Subtotal</div>
                             <div class="text-body-2 font-weight-medium">{{ money(selected.subtotal, selected.currency)
-                            }}</div>
+                                }}</div>
                         </div>
 
                         <div v-if="selected.discountTotal > 0" class="d-flex justify-space-between mb-2">
@@ -240,17 +240,25 @@
                             <div v-for="(l, i) in selected.lines" :key="`${l.product_id}-${i}`" class="line-row">
                                 <div class="d-flex align-center ga-3">
                                     <v-avatar rounded="lg" size="44" class="bg-grey-lighten-4">
-                                        <v-img v-if="l.image_path" :src="l.image_path" cover />
+                                        <v-img v-if="lineImage(l)" :src="lineImage(l)" cover />
                                         <v-icon v-else icon="mdi-tshirt-crew-outline" />
                                     </v-avatar>
 
                                     <div class="flex-grow-1 min-w-0">
                                         <div class="text-body-2 font-weight-medium text-truncate">
-                                            {{ l.name || 'Producto' }}
+                                            {{ lineName(l) }}
                                         </div>
+
                                         <div class="text-caption text-medium-emphasis">
-                                            {{ l.quantity }} × {{ money(l.unit_price ?? 0, selected.currency || 'EUR')
-                                            }}
+                                            {{ l.quantity }} × {{ money(l.unit_price ?? 0, selected.currency ||
+                                                'EUR') }}
+                                        </div>
+
+                                        <div v-if="lineSize(l) || lineColor(l)"
+                                            class="text-caption text-medium-emphasis mt-1">
+                                            <span v-if="lineSize(l)">Talla: {{ lineSize(l) }}</span>
+                                            <span v-if="lineSize(l) && lineColor(l)"> · </span>
+                                            <span v-if="lineColor(l)">Color: {{ lineColor(l) }}</span>
                                         </div>
                                     </div>
 
@@ -446,6 +454,47 @@ function money(n, currency = 'EUR') {
         currency,
         maximumFractionDigits: 2,
     }).format(v)
+}
+
+function pickImageUrl(x) {
+    if (!x) return null
+    if (typeof x === 'string') return x
+    return x.url ?? x.path ?? x.src ?? x.image_url ?? x.image ?? null
+}
+
+function lineImage(l) {
+    // 1) Si el backend ya trae una imagen directa en la línea
+    const direct = l?.image_path ?? l?.image_url ?? l?.image ?? null
+    if (direct) return direct
+
+    // 2) Si viene el product embebido con images
+    const p = l?.product ?? null
+    const imgs = Array.isArray(p?.images) ? p.images : []
+    const first = imgs[0]
+    const u = pickImageUrl(first)
+    if (u) return u
+
+    // 3) Fallback: nada
+    return null
+}
+
+function lineName(l) {
+    return l?.name ?? l?.product?.name ?? 'Producto'
+}
+
+function valueOf(v) {
+    if (v == null) return null
+    if (typeof v === 'string' || typeof v === 'number') return String(v)
+    if (typeof v === 'object') return v.value ?? v.name ?? v.label ?? (v.id != null ? String(v.id) : null)
+    return null
+}
+
+function lineSize(l) {
+    return valueOf(l?.size ?? l?.size_value ?? l?.size_name)
+}
+
+function lineColor(l) {
+    return valueOf(l?.color ?? l?.color_value ?? l?.color_name)
 }
 
 function openDetails(o) {

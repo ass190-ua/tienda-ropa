@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use App\Models\Order;
 use App\Models\Address;
 use App\Models\Payment;
@@ -21,6 +22,8 @@ class OrderController extends Controller
             ->where('user_id', $user->id)
             ->with([
                 'lines.product.images',
+                'lines.product.size:id,value',
+                'lines.product.color:id,value',
                 'payments',
             ])
             ->orderByDesc('created_at')
@@ -78,10 +81,20 @@ class OrderController extends Controller
                     return [
                         'product_id' => $l->product_id,
                         'name' => $p?->name,
-                        'image_path' => $firstImg?->path,
-                        'quantity' => (int)$l->quantity,
-                        'unit_price' => (float)$l->unit_price,
-                        'line_total' => (float)$l->line_total,
+
+                        'image_path' => $firstImg
+                            ? ($firstImg->url ?? ($firstImg->path ? Storage::url($firstImg->path) : null))
+                            : null,
+
+                        'quantity' => (int) $l->quantity,
+                        'unit_price' => (float) $l->unit_price,
+                        'line_total' => (float) $l->line_total,
+
+                        'size_id' => $p?->size_id,
+                        'size' => $p?->size?->value,
+
+                        'color_id' => $p?->color_id,
+                        'color' => $p?->color?->value,
                     ];
                 })->values(),
             ];

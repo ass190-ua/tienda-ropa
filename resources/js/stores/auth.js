@@ -21,6 +21,15 @@ export const useAuthStore = defineStore('auth', {
             }
         },
 
+        async updateProfile(payload) {
+            // payload: { name }
+            await axios.get('/sanctum/csrf-cookie')
+            const { data } = await axios.put('/api/user', payload)
+            this.user = data
+            return data
+        },
+
+
         async login(credentials) {
             // 1. Pedir cookie CSRF (seguridad obligatoria de Laravel)
             await axios.get('/sanctum/csrf-cookie')

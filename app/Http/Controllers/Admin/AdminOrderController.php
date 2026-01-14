@@ -109,7 +109,7 @@ class AdminOrderController extends Controller
 
     public function show($id)
     {
-        $order = Order::with(['user', 'address', 'lines.product'])->findOrFail($id);
+        $order = Order::with(['user', 'address', 'lines.product.images'])->findOrFail($id);
         return response()->json($order);
     }
 

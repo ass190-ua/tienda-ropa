@@ -23,6 +23,8 @@ const Devoluciones = () => import("../pages/Devoluciones.vue");
 const NotFound = () => import("../pages/NotFound.vue");
 const PaymentResult = () => import("../pages/PaymentResult.vue");
 const Checkout = () => import("../pages/Checkout.vue");
+const Profile = () => import("../pages/Profile.vue");
+
 
 // --- ADMIN ---
 const AdminLayout = () => import("../components/layout/AdminLayout.vue");
@@ -52,7 +54,8 @@ const router = createRouter({
         { path: "/register", name: "register", component: Register },
         { path: "/forgot-password", name: "ForgotPassword", component: ForgotPassword },
 
-        // Usuario (Protegidas basicas)
+        // usuario
+        { path: "/profile", name: "profile", component: Profile, meta: { requiresAuth: true } },
         { path: "/wishlist", name: "wishlist", component: Wishlist, meta: { requiresAuth: true } },
         { path: "/orders", name: "orders", component: Orders, meta: { requiresAuth: true } },
 

@@ -19,6 +19,9 @@ function mergeItemLists(baseItems, incomingItems) {
             existing.product = existing.product ?? it.product
             existing.size = existing.size ?? it.size
             existing.color = existing.color ?? it.color
+
+            existing.size_id = existing.size_id ?? it.size_id
+            existing.color_id = existing.color_id ?? it.color_id
         } else {
             map.set(k, { ...it, qty: Number(it.qty ?? 1) })
         }
@@ -27,8 +30,16 @@ function mergeItemLists(baseItems, incomingItems) {
     return Array.from(map.values())
 }
 
-function lineKey(productId, size, color) {
+function legacyLineKey(productId, size, color) {
+    // formato antiguo (para no “romper” carritos existentes)
     return `${productId}__${size ?? ''}__${color ?? ''}`
+}
+
+function lineKey(productId, size_id, color_id, size, color) {
+    // formato nuevo: usa IDs si existen, y si no, cae al texto
+    const s = size_id ? `sid:${size_id}` : `s:${size ?? ''}`
+    const c = color_id ? `cid:${color_id}` : `c:${color ?? ''}`
+    return `${productId}__${s}__${c}`
 }
 
 const CART_KEY_BASE = 'tiendamoda_cart'
@@ -141,27 +152,46 @@ export const useCartStore = defineStore('cart', {
             saveCart(this.storageKey, this.items)
         },
 
-        addToCart({ product, qty = 1, size = null, color = null }) {
+        addToCart({ product, qty = 1, size = null, color = null, size_id = null, color_id = null }) {
             if (!product) return
 
             const productId = product.id ?? product.productId
             if (!productId) return
 
-            const k = lineKey(productId, size, color)
+            const q = Math.max(1, Number(qty ?? 1))
 
-            const existing = this.items.find((i) => i.key === k)
+            const newKey = lineKey(productId, size_id, color_id, size, color)
+            const oldKey = legacyLineKey(productId, size, color)
+
+            // ✅ Compat: si ya existía con key antigua, la encontramos igual
+            let existing = this.items.find((i) => i.key === newKey)
+                || this.items.find((i) => i.key === oldKey)
+
             if (existing) {
-                existing.qty = Number(existing.qty ?? 1) + Number(qty ?? 1)
+                // si venía con key antigua, migramos a la nueva (sin duplicar)
+                if (existing.key !== newKey) existing.key = newKey
+
+                existing.qty = Number(existing.qty ?? 1) + q
+                existing.product = existing.product ?? product
+
+                // Guardamos valores y IDs (si llegan)
+                existing.size = size ?? existing.size ?? null
+                existing.color = color ?? existing.color ?? null
+                existing.size_id = size_id ?? existing.size_id ?? null
+                existing.color_id = color_id ?? existing.color_id ?? null
+
                 this._persist()
                 return
             }
 
             this.items.push({
-                key: k,
+                key: newKey,
                 product,
-                qty: Number(qty ?? 1),
+                qty: q,
                 size,
                 color,
+                size_id,
+                color_id,
             })
 
             this._persist()

@@ -10,7 +10,29 @@ export const useWishlistStore = defineStore('wishlist', {
 
     getters: {
         isInWishlist: (state) => (productId) =>
-            state.items.some((p) => Number(p.id) === Number(productId)),
+            state.items.some((p) =>
+                Number(p.product_id ?? p.id ?? p.product?.id) === Number(productId)
+            ),
+
+        findWishlistedProductId: (state) => (productIds = []) => {
+            const set = new Set(
+                state.items.map(i => Number(i.product_id ?? i.id ?? i.product?.id))
+            )
+            for (const id of productIds) {
+                if (set.has(Number(id))) return Number(id)
+            }
+            return null
+        },
+
+        isGroupInWishlist: (state) => (productIds = []) => {
+            const set = new Set(
+                state.items.map(i => Number(i.product_id ?? i.id ?? i.product?.id))
+            )
+            for (const id of productIds) {
+                if (set.has(Number(id))) return true
+            }
+            return false
+        },
     },
 
     actions: {
@@ -52,7 +74,6 @@ export const useWishlistStore = defineStore('wishlist', {
             for (const id of ids) {
                 await this.remove(id)
             }
-        }
-
+        },
     },
 })

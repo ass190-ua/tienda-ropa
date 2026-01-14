@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Http\Request;
+use App\Models\Address;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
@@ -34,6 +35,9 @@ Route::get('products/filters', [ProductController::class, 'filters']);
 Route::get('/products/{id}', [ProductController::class, 'show'])->whereNumber('id');
 Route::get('/products/top-purchased', [ProductController::class, 'topPurchased']);
 Route::get('/products/top-wishlisted', [ProductController::class, 'topWishlisted']);
+Route::get('/products/grouped', [ProductController::class, 'grouped']);
+Route::post('/products/grouped-by-ids', [ProductController::class, 'groupedByIds']);
+Route::post('/products/resolve-variant', [ProductController::class, 'resolveVariant']);
 
 // Reviews de productos (Público ver)
 Route::get('/products/{product}/reviews', [ReviewController::class, 'index'])
@@ -56,6 +60,22 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
+    Route::put('/user', function (Request $request) {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+        ]);
+
+        $user = $request->user();
+        $user->update($data);
+
+        return response()->json($user->fresh());
+    });
+
+    // Direcciones del usuario autenticado
+    Route::get('/addresses/me', [AddressController::class, 'me']);
+    Route::put('/addresses/shipping', [AddressController::class, 'saveShipping']);
+    Route::put('/addresses/billing', [AddressController::class, 'saveBilling']);
+
 
     // Wishlist
     Route::get('/wishlist', [WishlistController::class, 'index']);
@@ -66,8 +86,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/orders', [OrderController::class, 'index']);
     Route::post('/orders/complete', [OrderController::class, 'completeFromTpv']);
 
-    // Addresses
-    Route::get('/addresses/me', [AddressController::class, 'me']);
 
     // Coupons
     Route::post('/coupons/validate', [CouponController::class, 'validateCoupon']);
@@ -166,7 +184,7 @@ Route::get('/tpv/verify/{token}', function (string $token) {
 Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function () {
 
     // Stats Dashboard
-    Route::get('/stats', function() {
+    Route::get('/stats', function () {
         return response()->json([
             'users_count' => \App\Models\User::count(),
             'orders_count' => \App\Models\Order::count(),

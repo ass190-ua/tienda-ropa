@@ -3,7 +3,7 @@
         <div class="ga-4 mt-6 mb-6">
             <div class="w-md-auto busqueda">
                 <v-text-field v-model="q" clearable variant="outlined" density="comfortable" rounded="lg" hide-details
-                    prepend-inner-icon="mdi-magnify" placeholder="Buscar prendas, marcas…" />
+                    prepend-inner-icon="mdi-magnify" placeholder="Buscar productos…" />
             </div>
         </div>
 
@@ -19,8 +19,6 @@ import { useWishlistStore } from '@/stores/wishlist'
 
 const wishlist = useWishlistStore()
 const q = ref('')
-
-
 
 onMounted(async () => {
     // Si ya lo haces globalmente en App.vue, esto no molesta,

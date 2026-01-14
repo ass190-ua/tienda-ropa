@@ -22,7 +22,6 @@
       >
         <template v-slot:top>
           <v-card-title class="d-flex align-center flex-wrap py-4 px-4 gap-4 bg-white">
-
             <v-text-field
               v-model="search"
               prepend-inner-icon="mdi-magnify"
@@ -71,7 +70,6 @@
             >
               Exportar
             </v-btn>
-
           </v-card-title>
         </template>
 
@@ -125,7 +123,7 @@
       </v-data-table-server>
     </v-card>
 
-    <v-dialog v-model="detailsDialog" max-width="800px">
+    <v-dialog v-model="detailsDialog" max-width="900px">
       <v-card v-if="selectedOrder" class="rounded-xl">
         <v-card-title class="d-flex justify-space-between align-center pa-6 bg-grey-lighten-5">
           <span class="text-h6 font-weight-bold">Pedido #{{ selectedOrder.id }}</span>
@@ -138,7 +136,7 @@
 
         <v-card-text class="pa-6">
           <v-row>
-            <v-col cols="12" md="5">
+            <v-col cols="12" md="4">
               <h3 class="text-subtitle-2 font-weight-bold text-uppercase text-grey mb-3">Cliente</h3>
               <div class="d-flex align-center mb-4">
                  <v-avatar color="blue-lighten-5" size="48" class="mr-3">
@@ -174,19 +172,28 @@
               </div>
             </v-col>
 
-            <v-col cols="12" md="7">
+            <v-col cols="12" md="8">
                <h3 class="text-subtitle-2 font-weight-bold text-uppercase text-grey mb-3">Productos</h3>
 
-               <v-table density="compact" class="border rounded-lg">
+               <v-table density="comfortable" class="border rounded-lg">
                  <thead>
                    <tr>
-                     <th>Producto</th>
+                     <th width="60">Imagen</th> <th>Producto</th>
                      <th class="text-center">Cant.</th>
                      <th class="text-end">Total</th>
                    </tr>
                  </thead>
                  <tbody>
                    <tr v-for="line in selectedOrder.lines" :key="line.id">
+                     <td class="py-2">
+                        <v-avatar rounded size="48" class="bg-grey-lighten-4">
+                            <v-img
+                                :src="getProductImage(line.product)"
+                                cover
+                                error-icon="mdi-image-off"
+                            ></v-img>
+                        </v-avatar>
+                     </td>
                      <td class="py-2">
                        <div class="font-weight-medium">{{ line.product?.name || 'Producto borrado' }}</div>
                        <div class="text-caption text-grey">{{ formatCurrency(line.unit_price) }} / ud.</div>
@@ -225,7 +232,6 @@ const loading = ref(false);
 const itemsPerPage = ref(10);
 const search = ref('');
 
-// FILTROS NUEVOS
 const filters = ref({
   status: null,
   date: 'all'
@@ -246,7 +252,6 @@ const dateOptions = [
   { title: 'Último mes', value: 'month' },
 ];
 
-// Configuración de columnas
 const headers = [
   { title: 'ID', key: 'id', align: 'start' },
   { title: 'Usuario', key: 'user', sortable: false },
@@ -256,17 +261,13 @@ const headers = [
   { title: '', key: 'actions', sortable: false, align: 'end' },
 ];
 
-// Lógica del Dialog
 const detailsDialog = ref(false);
 const selectedOrder = ref(null);
 
-// Cargar pedidos desde la API (Incluye Búsqueda y Filtros)
 const loadOrders = async ({ page, itemsPerPage, sortBy } = {}) => {
   loading.value = true;
   try {
     const pageNumber = page || 1;
-
-    // Enviamos búsqueda + filtros al servidor
     const response = await axios.get('/api/admin/orders', {
         params: {
             page: pageNumber,
@@ -275,7 +276,6 @@ const loadOrders = async ({ page, itemsPerPage, sortBy } = {}) => {
             date: filters.value.date
         }
     });
-
     orders.value = response.data.data;
     totalOrders.value = response.data.total;
   } catch (error) {
@@ -285,7 +285,6 @@ const loadOrders = async ({ page, itemsPerPage, sortBy } = {}) => {
   }
 };
 
-// Ver detalles (abre el modal y carga datos completos)
 const openDetails = async (item) => {
     selectedOrder.value = item;
     detailsDialog.value = true;
@@ -298,14 +297,13 @@ const openDetails = async (item) => {
     }
 };
 
-// Actualizar estado desde el modal
 const updateStatus = async (newStatus) => {
     if (!selectedOrder.value) return;
     try {
         await axios.put(`/api/admin/orders/${selectedOrder.value.id}`, {
             status: newStatus
         });
-        loadOrders(); // Recargar la tabla
+        loadOrders();
     } catch (error) {
         console.error("Error actualizando estado", error);
         alert("No se pudo actualizar el estado");
@@ -313,21 +311,24 @@ const updateStatus = async (newStatus) => {
 };
 
 const exportOrders = () => {
-  // Construimos la URL manualmente con los filtros actuales
-  // URL base
   let url = '/api/admin/orders/export?';
-
-  // Añadimos parámetros
   const params = new URLSearchParams();
   if (search.value) params.append('search', search.value);
   if (filters.value.status) params.append('status', filters.value.status);
   if (filters.value.date) params.append('date', filters.value.date);
-
-  // Abrimos en una nueva pestaña (esto fuerza la descarga)
   window.open(url + params.toString(), '_blank');
 };
 
-// Utilidades Visuales
+// NUEVO: Helper para recuperar imagen
+const getProductImage = (product) => {
+    if (!product || !product.images || product.images.length === 0) {
+        return '/placeholder-image.jpg'; // Imagen por defecto si no hay
+    }
+    const path = product.images[0].path;
+    // Si la ruta ya es completa (http) la usamos, si no, le pegamos /storage/
+    return path.startsWith('http') ? path : `/storage/${path}`;
+};
+
 const getStatusColor = (status) => {
   const map = {
     pending: 'orange-darken-1',
@@ -355,6 +356,6 @@ const formatCurrency = (value) => {
 };
 
 onMounted(() => {
-    // La tabla lanza loadOrders automáticamente al montarse gracias al v-data-table-server
+    // La tabla carga datos automáticamente
 });
 </script>
