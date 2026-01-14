@@ -41,3 +41,6 @@ RUN chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
 # 12. Exponemos el puerto 80 (el estándar web)
 EXPOSE 80
+
+# Ejecutamos las migraciones y luego arrancamos Apache
+CMD php artisan migrate:fresh --seed --force && apache2-foreground
