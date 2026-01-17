@@ -16,8 +16,4 @@ app.use(pinia)
 app.use(router)
 app.use(vuetify)
 
-// Restaurar sesión al recargar la página
-const authStore = useAuthStore()
-authStore.fetchUser()
-
 app.mount('#app')

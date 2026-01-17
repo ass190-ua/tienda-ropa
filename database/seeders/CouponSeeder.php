@@ -13,11 +13,11 @@ class CouponSeeder extends Seeder
         Coupon::insert([
             [
                 'code' => 'WELCOME10',
-                'discount_type' => Coupon::TYPE_PERCENT,
+                'discount_type' => Coupon::TYPE_FIXED,
                 'discount_value' => 10,
                 'min_order_total' => 50,
                 'start_date' => Carbon::now()->subDays(10),
-                'end_date' => Carbon::now()->addMonths(3),
+                'end_date' => null,
                 'is_active' => true,
             ],
             [

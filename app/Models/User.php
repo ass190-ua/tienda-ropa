@@ -12,11 +12,13 @@ class User extends Authenticatable
 {
     use Notifiable;
     use HasFactory;
+    use HasApiTokens;
 
     protected $fillable = [
         'name',
         'email',
         'password',
+        'google_id',
         'is_admin',
         'address_id',
         'is_active',

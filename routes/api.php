@@ -2,6 +2,9 @@
 
 use Illuminate\Http\Request;
 use App\Models\Address;
+use App\Models\Cart;
+use App\Models\StockItem;
+use App\Models\Coupon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
@@ -12,10 +15,12 @@ use App\Http\Controllers\OrderController;
 use App\Http\Controllers\AddressController;
 use App\Http\Controllers\CouponController;
 use App\Http\Controllers\ReviewController;
+use App\Http\Controllers\CartController;
 use App\Http\Controllers\Admin\AdminOrderController;
 use App\Http\Controllers\Admin\AdminProductController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\AdminReviewController;
+use App\Http\Controllers\NewsletterController;
 
 /*
 |--------------------------------------------------------------------------
@@ -32,11 +37,14 @@ Route::get('/products/home', [ProductController::class, 'homeProducts']);
 Route::get('/products/featured', [ProductController::class, 'featuredProducts']);
 Route::get('/products', [ProductController::class, 'index']);
 Route::get('products/filters', [ProductController::class, 'filters']);
+Route::get('/products/{id}/availability', [ProductController::class, 'availability'])->whereNumber('id');
 Route::get('/products/{id}', [ProductController::class, 'show'])->whereNumber('id');
 Route::get('/products/top-purchased', [ProductController::class, 'topPurchased']);
 Route::get('/products/top-wishlisted', [ProductController::class, 'topWishlisted']);
 Route::get('/products/grouped', [ProductController::class, 'grouped']);
+Route::get('/products/novedades-grouped', [ProductController::class, 'novedadesGroupedProducts']);
 Route::post('/products/grouped-by-ids', [ProductController::class, 'groupedByIds']);
+Route::post('/products/variants-by-ids', [ProductController::class, 'variantsByIds']);
 Route::post('/products/resolve-variant', [ProductController::class, 'resolveVariant']);
 
 // Reviews de productos (Público ver)
@@ -46,20 +54,34 @@ Route::get('/products/{product}/reviews', [ReviewController::class, 'index'])
 // Autenticación
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+Route::middleware(['web'])->group(function () {
+    Route::get('/auth/google/redirect', [AuthController::class, 'redirectToGoogle']);
+    Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
+});
 
 // Contacto
 Route::post('/contact', [ContactController::class, 'send']);
 
+// Newsletter
+Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe']);
+
 // ==========================================
 // RUTAS PROTEGIDAS (CLIENTE)
 // ==========================================
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['web', 'auth'])->group(function () {
+
+    Route::get('/me', function (Request $request) {
+        return response()->json(['user' => $request->user()]);
+    });
 
     Route::post('/logout', [AuthController::class, 'logout']);
 
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
+
     Route::put('/user', function (Request $request) {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -86,13 +108,115 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/orders', [OrderController::class, 'index']);
     Route::post('/orders/complete', [OrderController::class, 'completeFromTpv']);
 
-
     // Coupons
     Route::post('/coupons/validate', [CouponController::class, 'validateCoupon']);
 
+    // Cart
+    Route::get('/cart', [CartController::class, 'show']);
+    Route::post('/cart/items', [CartController::class, 'upsertItem']);
+    Route::patch('/cart/items/{product}', [CartController::class, 'updateItem'])->whereNumber('product');
+    Route::delete('/cart/items/{product}', [CartController::class, 'deleteItem'])->whereNumber('product');
+    Route::delete('/cart', [CartController::class, 'clear']);
+
     // TPV - Inicio de pago
     Route::post('/checkout/start', function (Request $request) {
-        $amount = $request->input('amount', 49.99);
+
+        $user = $request->user();
+
+        // Opcional: el frontend puede mandar cupón aplicado, pero NO amount.
+        $data = $request->validate([
+            'coupon_code' => ['nullable', 'string', 'max:50'],
+        ]);
+
+        $couponCode = trim((string)($data['coupon_code'] ?? ''));
+
+        // Cargar carrito del usuario (BD)
+        $cart = Cart::query()
+            ->where('user_id', $user->id)
+            ->with('items') // relación definida en Cart.php
+            ->first();
+
+        if (!$cart || $cart->items->isEmpty()) {
+            return response()->json([
+                'message' => 'El carrito está vacío.',
+                'code' => 'CART_EMPTY',
+            ], 422);
+        }
+
+        // Agrupar cantidades por product_id
+        $grouped = $cart->items
+            ->groupBy('product_id')
+            ->map(fn($g, $pid) => [
+                'product_id' => (int)$pid,
+                'qty' => (int)$g->sum('quantity'),
+            ])
+            ->values();
+
+        // 1) Validación de stock (sin reservar: modelo mínimo)
+        $insufficient = [];
+        foreach ($grouped as $it) {
+            $pid = (int)$it['product_id'];
+            $qty = (int)$it['qty'];
+
+            $stockTotal = (int) StockItem::query()
+                ->where('product_id', $pid)
+                ->sum('quantity');
+
+            if ($qty > $stockTotal) {
+                $insufficient[] = [
+                    'product_id' => $pid,
+                    'requested' => $qty,
+                    'available' => $stockTotal,
+                ];
+            }
+        }
+
+        if (!empty($insufficient)) {
+            return response()->json([
+                'message' => 'No hay stock suficiente para iniciar el pago.',
+                'code' => 'OUT_OF_STOCK_BEFORE_TPV',
+                'items' => $insufficient,
+            ], 422);
+        }
+
+        // 2) Calcular subtotal desde BD (cart_items tiene line_total)
+        $subtotal = (float) $cart->items->sum('line_total');
+
+        // 3) Cupón (misma idea que en OrderController)
+        $couponDiscount = 0.0;
+        if ($couponCode !== '') {
+            $coupon = Coupon::query()
+                ->whereRaw('LOWER(code) = ?', [mb_strtolower($couponCode)])
+                ->first();
+
+            if ($coupon && $coupon->is_active) {
+                $now = now();
+
+                $okDates = (!$coupon->start_date || $now->gte($coupon->start_date))
+                    && (!$coupon->end_date || $now->lte($coupon->end_date));
+
+                $okMin = ($coupon->min_order_total === null)
+                    || ($subtotal >= (float)$coupon->min_order_total);
+
+                if ($okDates && $okMin) {
+                    if ($coupon->discount_type === 'percent') {
+                        $couponDiscount = $subtotal * ((float)$coupon->discount_value / 100.0);
+                    } elseif ($coupon->discount_type === 'fixed') {
+                        $couponDiscount = (float)$coupon->discount_value;
+                    }
+
+                    $couponDiscount = round(min($subtotal, $couponDiscount), 2);
+                }
+            }
+        }
+
+        $base = max(0, round($subtotal - $couponDiscount, 2));
+
+        // 4) Envío (igual que tu Checkout.vue)
+        $shippingCost = ($base >= 60) ? 0.0 : 4.99;
+        $total = round($base + $shippingCost, 2);
+
+        // 5) Llamar al TPV con total del servidor
         $callbackUrl = $request->getSchemeAndHttpHost() . '/api/checkout/callback';
         $tpvBase = rtrim(env('TPV_BASE_URL'), '/');
         $apiKey  = env('TPV_API_KEY');
@@ -101,7 +225,7 @@ Route::middleware('auth:sanctum')->group(function () {
             'X-API-KEY' => $apiKey,
             'Accept' => 'application/json',
         ])->post($tpvBase . '/api/v1/payments/init', [
-            'amount' => $amount,
+            'amount' => $total,
             'callbackUrl' => $callbackUrl,
         ]);
 
@@ -113,7 +237,16 @@ Route::middleware('auth:sanctum')->group(function () {
             ], 500);
         }
 
-        return response()->json($resp->json(), 200);
+        // Importante: devolvemos también amount y breakdown para que el frontend guarde lo correcto
+        return response()->json(array_merge($resp->json() ?? [], [
+            'amount' => $total,
+            'breakdown' => [
+                'subtotal' => round($subtotal, 2),
+                'coupon_discount' => $couponDiscount,
+                'shipping' => $shippingCost,
+                'base' => $base,
+            ],
+        ]), 200);
     });
 
     // Reviews (Escritura y Edición)
@@ -185,12 +318,25 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
 
     // Stats Dashboard
     Route::get('/stats', function () {
+        // Definimos qué estados suman DINERO real
+        $validStatuses = ['paid', 'shipped', 'delivered'];
+
+        // Calculamos los ingresos (Solo de pedidos válidos/cobrados)
+        // Usamos ->get() y ->sum('total') para usar el atributo calculado en el Modelo
+        $revenue = \App\Models\Order::whereIn('status', $validStatuses)
+                    ->get()
+                    ->sum('total');
+
         return response()->json([
             'users_count' => \App\Models\User::count(),
+
+            //Aquí volvemos a contar TODOS los pedidos para ver el volumen total de actividad
             'orders_count' => \App\Models\Order::count(),
-            'revenue'     => \App\Models\Order::sum('subtotal'), // Ajustar si usas total_amount
+
+            'revenue'     => $revenue, // El dinero SÍ se mantiene filtrado (solo lo real)
             'products_count' => \App\Models\Product::count(),
             'reviews_count' => \App\Models\Review::count(),
+            'coupons_count' => \App\Models\Coupon::count(),
         ]);
     });
 
@@ -217,7 +363,14 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
     Route::put('/orders/{id}', [App\Http\Controllers\Admin\AdminOrderController::class, 'update']);
 
     // GESTIÓN DE REVIEWS
-    Route::get('/reviews', [App\Http\Controllers\Admin\AdminReviewController::class, 'index']); // <--- ESTA FALTABA
+    Route::get('/reviews', [App\Http\Controllers\Admin\AdminReviewController::class, 'index']);
     Route::delete('/reviews/{review}', [App\Http\Controllers\Admin\AdminReviewController::class, 'reject']);
     Route::patch('/reviews/{review}/approve', [App\Http\Controllers\Admin\AdminReviewController::class, 'approve']);
+
+    // GESTIÓN DE CUPONES
+    Route::get('/coupons', [\App\Http\Controllers\Admin\AdminCouponController::class, 'index']);
+    Route::post('/coupons', [\App\Http\Controllers\Admin\AdminCouponController::class, 'store']);
+    Route::put('/coupons/{id}', [\App\Http\Controllers\Admin\AdminCouponController::class, 'update']);
+    Route::delete('/coupons/{id}', [\App\Http\Controllers\Admin\AdminCouponController::class, 'destroy']);
+    Route::patch('/coupons/{id}/toggle', [\App\Http\Controllers\Admin\AdminCouponController::class, 'toggleActive']);
 });

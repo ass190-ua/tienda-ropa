@@ -51,7 +51,7 @@ class AdminOrderController extends Controller
 
     public function index(Request $request)
     {
-        $query = Order::with(['user', 'address']);
+        $query = Order::with(['user', 'address', 'payments']);
 
         // Aplicamos los filtros
         $query = $this->applyFilters($query, $request);
@@ -62,54 +62,34 @@ class AdminOrderController extends Controller
         return response()->json($orders);
     }
 
-    // ¡NUEVO! Función para Exportar a CSV
     public function export(Request $request)
     {
-        $query = Order::with(['user', 'address']);
+        // 1. Cargar pedidos con TODAS las relaciones necesarias
+        // ¡Importante! Cargar lines.product.images para poder pintar las fotos
+        $query = Order::with(['user', 'address', 'lines.product.images']);
 
-        // Aplicamos los MISMOS filtros que en la lista (para exportar lo que ves)
+        // 2. Aplicar los mismos filtros que en el listado
         $query = $this->applyFilters($query, $request);
 
         $orders = $query->orderBy('created_at', 'desc')->get();
 
-        $filename = "pedidos-" . date('Y-m-d') . ".csv";
+        // 3. Renderizar la vista HTML que creamos
+        $view = view('admin.exports.orders', compact('orders'))->render();
 
-        $headers = [
-            "Content-type"        => "text/csv",
-            "Content-Disposition" => "attachment; filename=$filename",
-            "Pragma"              => "no-cache",
-            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
-            "Expires"             => "0"
-        ];
-
-        $callback = function() use ($orders) {
-            $file = fopen('php://output', 'w');
-
-            // Encabezados del CSV (UTF-8 BOM para que Excel lea bien los acentos)
-            fputs($file, $bom =( chr(0xEF) . chr(0xBB) . chr(0xBF) ));
-            fputcsv($file, ['ID', 'Cliente', 'Email', 'Fecha', 'Estado', 'Total', 'Dirección']);
-
-            foreach ($orders as $order) {
-                fputcsv($file, [
-                    $order->id,
-                    $order->user ? $order->user->name : 'Invitado',
-                    $order->user ? $order->user->email : '',
-                    $order->created_at->format('d/m/Y H:i'),
-                    $order->status,
-                    $order->total_amount ?? $order->subtotal, // Ajuste según tu modelo
-                    $order->address ? ($order->address->address_line_1 . ' ' . $order->address->city) : 'S/D'
-                ]);
-            }
-
-            fclose($file);
-        };
-
-        return response()->stream($callback, 200, $headers);
+        // 4. Retornar la respuesta con cabeceras de Excel
+        // Esto engaña al navegador para que lo descargue como .xls
+        return response($view)
+            ->header('Content-Type', 'application/vnd.ms-excel; charset=utf-8')
+            ->header('Content-Disposition', 'attachment; filename="Listado-Pedidos-' . date('Y-m-d') . '.xls"')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
     }
 
     public function show($id)
     {
-        $order = Order::with(['user', 'address', 'lines.product.images'])->findOrFail($id);
+        $order = Order::with(['user', 'address', 'lines.product.images', 'payments', 'coupon'])
+                      ->findOrFail($id);
+
         return response()->json($order);
     }
 

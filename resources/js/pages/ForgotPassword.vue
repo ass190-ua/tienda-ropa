@@ -22,12 +22,27 @@
                         </v-alert>
 
                         <v-form ref="form" @submit.prevent="onSubmit">
-                            <v-text-field v-model="email" label="Email" placeholder="tuemail@ejemplo.com" type="email"
-                                autocomplete="email" variant="outlined" density="comfortable" :rules="emailRules"
-                                prepend-inner-icon="mdi-email-outline" />
+                            <v-text-field
+                                v-model="email"
+                                label="Email"
+                                placeholder="tuemail@ejemplo.com"
+                                type="email"
+                                autocomplete="email"
+                                variant="outlined"
+                                density="comfortable"
+                                :rules="emailRules"
+                                prepend-inner-icon="mdi-email-outline"
+                            />
 
-                            <v-btn type="submit" color="primary" size="large" rounded="lg" block class="mt-2"
-                                :loading="loading">
+                            <v-btn
+                                type="submit"
+                                color="primary"
+                                size="large"
+                                rounded="lg"
+                                block
+                                class="mt-2"
+                                :loading="loading"
+                            >
                                 Enviar enlace
                             </v-btn>
 
@@ -54,6 +69,7 @@
 
 <script setup>
 import { ref, nextTick } from 'vue'
+import axios from 'axios' // <--- IMPORTANTE: Importamos Axios para conectar con Laravel
 
 const form = ref(null)
 
@@ -71,20 +87,37 @@ async function onSubmit() {
     successMsg.value = ''
     errorMsg.value = ''
 
+    // Validamos el formulario visualmente
     const res = await form.value?.validate()
     if (!res?.valid) return
 
     loading.value = true
+
     try {
-        await new Promise(r => setTimeout(r, 700))
+        // --- AQUÍ ESTÁ EL CAMBIO PRINCIPAL ---
+        // Llamamos a la ruta que creamos en api.php
+        const response = await axios.post('/api/forgot-password', {
+            email: email.value
+        });
 
-        successMsg.value = 'Si el email existe, te hemos enviado un enlace de recuperación.'
+        // Si todo va bien, mostramos el mensaje que devuelve Laravel
+        successMsg.value = response.data.message || 'Te hemos enviado un enlace de recuperación.';
 
+        // Limpiamos el campo para que no le den dos veces sin querer
         email.value = ''
         await nextTick()
         form.value?.resetValidation()
+
     } catch (e) {
-        errorMsg.value = 'No se pudo enviar el enlace. Inténtalo de nuevo.'
+        // Si hay error (ej. email no existe o fallo de servidor)
+        if (e.response && e.response.data && e.response.data.errors) {
+            // Mostramos el error específico del backend (ej. "No encontramos un usuario con ese correo")
+            errorMsg.value = Object.values(e.response.data.errors).flat().join('\n');
+        } else if (e.response && e.response.data && e.response.data.message) {
+            errorMsg.value = e.response.data.message;
+        } else {
+            errorMsg.value = 'No se pudo enviar el enlace. Inténtalo de nuevo más tarde.'
+        }
     } finally {
         loading.value = false
     }

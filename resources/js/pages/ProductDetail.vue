@@ -348,6 +348,14 @@
           </v-card-actions>
         </v-card>
       </v-dialog>
+
+      <!-- Snackbar de confirmación -->
+      <v-snackbar v-model="reviewToast" :color="reviewToastColor" timeout="3500" location="bottom" >
+        {{ reviewToastText }}
+        <template #actions>
+          <v-btn variant="text" @click="reviewToast = false">Cerrar</v-btn>
+        </template>
+      </v-snackbar>
     </div>
   </v-container>
 </template>
@@ -377,6 +385,9 @@ const reviewError = ref("");
 
 const newReviewRating = ref(5);
 const newReviewComment = ref("");
+const reviewToast = ref(false);
+const reviewToastText = ref("");
+const reviewToastColor = ref("success");
 
 const productId = computed(() => String(route.params.id ?? ""));
 
@@ -644,7 +655,9 @@ async function submitReview() {
       comment: newReviewComment.value,
     };
 
-    //Editar si editingReviewId tiene valor, si no => crear
+    const wasEditing = Boolean(editingReviewId.value);
+
+    // Editar si editingReviewId tiene valor, si no => crear
     if (editingReviewId.value) {
       await axios.patch(
         `/api/products/${productId.value}/reviews/${editingReviewId.value}`,
@@ -657,16 +670,28 @@ async function submitReview() {
     reviewDialog.value = false;
     editingReviewId.value = null;
 
+    // ✅ Mostrar mensaje de éxito
+    showReviewToast(
+      wasEditing
+        ? "Tu valoración se ha actualizado y está pendiente de revisión."
+        : "Tu valoración se ha enviado y está pendiente de revisión.",
+      "success"
+    );
+
     // Recargar reviews para ver cambios
     await fetchReviews();
   } catch (e) {
     console.error("SUBMIT REVIEW ERROR:", e);
     reviewError.value =
       e?.response?.data?.message || "No se pudo enviar la valoración.";
+
+    // ✅ Mostrar mensaje de error
+    showReviewToast("No se pudo enviar la valoración.", "error");
   } finally {
     reviewSubmitting.value = false;
   }
 }
+
 
 function editReview(r) {
   reviewError.value = "";
@@ -674,6 +699,12 @@ function editReview(r) {
   newReviewRating.value = r.stars;
   newReviewComment.value = r.text ?? "";
   reviewDialog.value = true;
+}
+
+function showReviewToast(message, color = "success") {
+  reviewToastText.value = message;
+  reviewToastColor.value = color;
+  reviewToast.value = true;
 }
 
 </script>

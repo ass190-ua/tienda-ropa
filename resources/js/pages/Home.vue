@@ -55,11 +55,37 @@
             <v-container class="text-center">
                 <v-icon icon="mdi-email-outline" size="50" class="mb-4" color="primary"></v-icon>
                 <h3 class="text-h4 font-weight-bold mb-2">Únete a nuestra Newsletter</h3>
-                <p class="text-body-1 text-medium-emphasis mb-6">Recibe ofertas exclusivas y novedades antes que nadie.
+                <p class="text-body-1 text-medium-emphasis mb-6">
+                    Recibe ofertas exclusivas y novedades antes que nadie.
                 </p>
+
                 <v-responsive max-width="500" class="mx-auto">
-                    <v-text-field label="Tu correo electrónico" variant="solo" append-inner-icon="mdi-arrow-right"
-                        single-line hide-details></v-text-field>
+                    <v-form @submit.prevent="onSubscribe">
+                        <v-text-field
+                            v-model="email"
+                            label="Tu correo electrónico"
+                            variant="solo"
+                            single-line
+                            hide-details
+                            :loading="submitting"
+                            :disabled="submitting"
+                        >
+                            <template v-slot:append-inner>
+                                <v-icon
+                                    icon="mdi-arrow-right"
+                                    color="primary"
+                                    class="cursor-pointer"
+                                    @click="onSubscribe"
+                                ></v-icon>
+                            </template>
+                        </v-text-field>
+                    </v-form>
+
+                    <div v-if="newsletterMessage"
+                         class="mt-3 font-weight-bold"
+                         :class="isError ? 'text-red' : 'text-green-darken-1'">
+                        {{ newsletterMessage }}
+                    </div>
                 </v-responsive>
             </v-container>
         </v-sheet>
@@ -68,14 +94,18 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import ProductCard from '@/components/ProductCard.vue'
+import ProductCard from '../components/ProductCard.vue'
 import axios from 'axios'
-import { useWishlistStore } from '@/stores/wishlist'
 
-// --- ESTADO ---
+// --- ESTADO PRODUCTOS ---
 const products = ref([])
 const loading = ref(true)
-const wishlist = useWishlistStore()
+
+// --- ESTADO NEWSLETTER (NUEVO) ---
+const email = ref('')
+const submitting = ref(false)
+const newsletterMessage = ref('')
+const isError = ref(false)
 
 // --- DATOS ESTÁTICOS (Visuales) ---
 const slides = [
@@ -99,10 +129,8 @@ const categories = [
 
 // --- LÓGICA ---
 
-// Obtener productos reales del backend
 async function fetchHomeProducts() {
     try {
-        // Llamamos a la ruta que creamos en el Paso 1
         const { data } = await axios.get('/api/products/home')
         products.value = data
     } catch (e) {
@@ -112,25 +140,36 @@ async function fetchHomeProducts() {
     }
 }
 
-// Helper para formatear precio
-function formatPrice(value) {
-    return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(value)
-}
+// --- LÓGICA NEWSLETTER (NUEVO) ---
+async function onSubscribe() {
+    if (!email.value) return
 
-// Helper para sacar la imagen (si no tiene, pone placeholder)
-function getProductImage(product) {
-    if (product.images && product.images.length > 0) {
-        // Asumiendo que guardaste la URL o path
-        return product.images[0].path || product.images[0].url
+    submitting.value = true
+    newsletterMessage.value = ''
+    isError.value = false
+
+    try {
+        const response = await axios.post('/api/newsletter/subscribe', {
+            email: email.value
+        })
+
+        newsletterMessage.value = response.data.message
+        email.value = '' // Limpiar campo
+    } catch (error) {
+        isError.value = true
+        newsletterMessage.value = error.response?.data?.message || "Hubo un error. Inténtalo de nuevo."
+    } finally {
+        submitting.value = false
+        // Borrar mensaje a los 5 segundos si fue éxito
+        if (!isError.value) {
+            setTimeout(() => { newsletterMessage.value = '' }, 5000)
+        }
     }
-    return 'https://via.placeholder.com/300x300?text=Sin+Imagen'
 }
 
-onMounted(async () => {
-    try { await wishlist.fetchWishlist() } catch (_) { }
-    fetchHomeProducts()
+onMounted(() => {
+  fetchHomeProducts()
 })
-
 </script>
 
 <style scoped>

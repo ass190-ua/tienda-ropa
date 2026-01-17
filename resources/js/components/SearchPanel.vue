@@ -207,7 +207,8 @@
                                             :aria-label="wishlist.isGroupInWishlist(p.product_ids) ? 'Quitar de favoritos' : 'Añadir a favoritos'"
                                             @click.stop="toggleWishlistGroup(p)">
                                             <v-icon
-                                                :icon="wishlist.isGroupInWishlist(p.product_ids) ? 'mdi-heart' : 'mdi-heart-outline'" color="red" />
+                                                :icon="wishlist.isGroupInWishlist(p.product_ids) ? 'mdi-heart' : 'mdi-heart-outline'"
+                                                color="red" />
                                         </v-btn>
                                     </div>
                                 </v-card-text>
@@ -241,9 +242,9 @@
                 </div>
 
                 <VistaRapidaDialog v-model="quickViewOpen" :product="quickViewProduct" :colors-palette="colors"
-                    @add="onAddToCart" />
+                    :syncing="cart.syncing" @add="onAddToCart" />
 
-                <v-snackbar v-model="snackbar.open" :timeout="2500" color="success" rounded="lg">
+                <v-snackbar v-model="snackbar.open" :timeout="2500" :color="snackbar.color" rounded="lg">
                     {{ snackbar.text }}
                 </v-snackbar>
             </v-col>
@@ -431,7 +432,6 @@ onMounted(async () => {
 })
 
 async function fetchFilters(includeSelectedTypes = false) {
-    syncing.value = true
     try {
         const wasDefaultPrice = isPriceDefault.value
 
@@ -483,8 +483,6 @@ async function fetchFilters(includeSelectedTypes = false) {
         maps.value = { sizeById: {}, colorById: {}, typeById: {}, sizeIdsByName: {}, colorIdsByName: {}, typeIdsByName: {} }
         defaultPrice.value = [0, 200];
         price.value = [0, 200];
-    } finally {
-        syncing.value = false
     }
 }
 
@@ -647,17 +645,39 @@ function scrollToTop() {
 
 const quickViewOpen = ref(false)
 const quickViewProduct = ref(null)
-const snackbar = ref({ open: false, text: '' })
+const snackbar = ref({ open: false, text: '', color: 'success' })
 
 function openQuickView(p) {
     quickViewProduct.value = p
     quickViewOpen.value = true
 }
 
-function onAddToCart(payload) {
-    cart.addToCart(payload)
-    snackbar.value.text = `Añadido: ${payload.product?.name} (x${payload.qty})`
-    snackbar.value.open = true
+async function onAddToCart(payload) {
+    try {
+        await cart.addToCart(payload)
+
+        if (cart.stockWarning?.message) {
+            snackbar.value.text = cart.stockWarning.message
+            snackbar.value.color = 'warning'
+            snackbar.value.open = true
+            cart.clearStockWarning?.()
+            return
+        }
+
+        snackbar.value.text = `Añadido: ${payload.product?.name} (x${payload.qty})`
+        snackbar.value.color = 'success'
+        snackbar.value.open = true
+
+        quickViewOpen.value = false
+    } catch (e) {
+        snackbar.value.text =
+            e?.response?.data?.message ||
+            e?.response?.data?.error ||
+            e?.message ||
+            'No se pudo añadir al carrito.'
+        snackbar.value.color = 'error'
+        snackbar.value.open = true
+    }
 }
 
 const wishlist = useWishlistStore()

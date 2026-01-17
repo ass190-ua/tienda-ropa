@@ -27,7 +27,7 @@
                         <v-row class="gy-6" align="end" justify="center">
                             <!-- 2º -->
                             <v-col cols="12" sm="4" class="d-flex justify-center">
-                                <<div v-if="purchasedPodium[1]" class="podium-card podium-2 medal silver">
+                                <div v-if="purchasedPodium[1]" class="podium-card podium-2 medal silver">
                                     <div class="podium-badge">2</div>
                                     <ProductCard :product="purchasedPodium[1]" />
                     </div>

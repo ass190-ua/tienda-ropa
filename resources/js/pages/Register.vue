@@ -111,15 +111,9 @@
                                     </div>
 
                                     <v-btn variant="outlined" size="large" block rounded="lg"
-                                        class="text-none social-btn" @click="onSocial('google')">
-                                        <img class="social-logo" src="../assets/google.png" alt="Google" />
+                                        class="text-none social-btn" @click="onSocial('google')" :loading="loadingGoogle">
+                                        <img src="../assets/google.png" class="social-logo" alt="Google" />
                                         Continuar con Google
-                                    </v-btn>
-
-                                    <v-btn variant="outlined" size="large" block rounded="lg"
-                                        class="text-none social-btn mt-3" @click="onSocial('github')">
-                                        <img class="social-logo" src="../assets/github.png" alt="GitHub" />
-                                        Continuar con GitHub
                                     </v-btn>
 
                                     <div class="text-center mt-7">
@@ -157,6 +151,7 @@ const name = ref('')
 const email = ref('')
 const password = ref('')
 const confirmPassword = ref('')
+const loadingGoogle = ref(false);
 
 const acceptTerms = ref(true)
 const showPassword = ref(false)
@@ -178,7 +173,7 @@ const emailRules = [
 
 const passwordRules = [
     v => !!v || 'La contraseña es obligatoria',
-    v => (v?.length ?? 0) >= 6 || 'Mínimo 6 caracteres',
+    v => (v?.length ?? 0) >= 8 || 'Mínimo 8 caracteres',
 ]
 
 const confirmRules = [
@@ -227,9 +222,12 @@ async function onSubmit() {
     }
 }
 
-function onSocial(provider) {
-    errorMsg.value = `Registro con ${provider} aún no está conectado.`
-}
+const onSocial = (provider) => {
+    loadingGoogle.value = true;
+    // Esto iniciará el viaje de ida y vuelta.
+    // Al volver, aterrizarás en '/' ya logueado.
+    window.location.href = '/api/auth/google/redirect';
+};
 </script>
 
 <style scoped>

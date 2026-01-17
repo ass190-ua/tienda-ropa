@@ -191,30 +191,38 @@ const form = reactive({
 // Imagen
 const imageFile = ref(null);
 const previewImage = ref(null);
-
-// Desplegables
 const categories = ref([]);
 
-// Notificaciones
 const snackbar = reactive({ show: false, message: '', color: 'success' });
+
+// --- FUNCIÓN INTELIGENTE PARA IMÁGENES ---
+const getImageUrl = (path) => {
+    if (!path) return null;
+    if (path.startsWith('http')) return path;
+
+    // Si la ruta contiene "images/", asumimos que es de las antiguas (carpeta public)
+    if (path.includes('images/')) {
+        return path.startsWith('/') ? path : `/${path}`;
+    }
+
+    // Si no, asumimos que es una subida nueva de Laravel (carpeta storage)
+    // Aseguramos que tenga /storage/ delante
+    if (path.startsWith('/storage')) return path;
+    return `/storage/${path}`;
+};
 
 // --- MÉTODOS ---
 
-// 1. Cargar datos iniciales
 const loadData = async () => {
     try {
-        // Cargar opciones de desplegables (API que creamos paso 1)
+        // Cargar categorías
         const attrResponse = await axios.get('/api/admin/products/form-data');
-        // Filtramos para obtener solo las categorías (asumiendo que vienen todos los atributos)
-        // Adaptar esto según cómo devuelva tu API los datos.
-        // Si tu API devuelve array de atributos con sus valores:
-        const catAttribute = attrResponse.data.find(a => a.name === 'category' || a.name === 'Categoría');
-        if (catAttribute) {
-            categories.value = catAttribute.values;
+        // Ajuste defensivo por si la API cambia de estructura
+        if (Array.isArray(attrResponse.data)) {
+             const catObj = attrResponse.data.find(a => a.name === 'category' || a.name === 'Categoría');
+             categories.value = catObj ? catObj.values : attrResponse.data;
         } else {
-            // Fallback si no encuentra estructura compleja, intenta ver si devuelve valores directos
-             // O simplemente asigna todo si tu API devolvió solo categorías
-             // categories.value = attrResponse.data;
+             categories.value = attrResponse.data;
         }
 
         // Si estamos editando, cargar producto
@@ -229,8 +237,9 @@ const loadData = async () => {
             form.stock = p.stock;
             form.category_id = p.category_id;
 
-            if (p.image_url) {
-                previewImage.value = p.image_url;
+            // [CORRECCIÓN] Usamos la función inteligente para mostrar la imagen existente
+            if (p.image_url || p.image) {
+                previewImage.value = getImageUrl(p.image_url || p.image);
             }
         }
     } catch (e) {
@@ -241,56 +250,53 @@ const loadData = async () => {
     }
 };
 
-// 2. Previsualizar Imagen al seleccionar
-const handleImagePreview = (files) => {
-    if (!files || !files.length) return; // En Vuetify 3 file-input devuelve array
-    const file = files[0]; // Ojo: a veces devuelve el objeto directo dependiendo versión, verifica.
-    // Corrección para Vuetify 3: v-model suele ser array
-    const actualFile = Array.isArray(imageFile.value) ? imageFile.value[0] : imageFile.value;
+const handleImagePreview = (fileInputInfo) => {
+    // fileInputInfo puede ser el evento o el array de archivos directamente
+    // Aseguramos obtener el primer archivo real
+    const file = Array.isArray(fileInputInfo) ? fileInputInfo[0] : fileInputInfo;
 
-    if (actualFile) {
-        previewImage.value = URL.createObjectURL(actualFile);
+    if (file && file instanceof File) {
+        previewImage.value = URL.createObjectURL(file);
+        imageFile.value = [file]; // Forzamos que el modelo sea un array para Vuetify
+    } else {
+        // Si no hay fichero válido (ej. usuario cancela), no hacemos nada o limpiamos
+        // previewImage.value = null;
     }
 };
 
-// 3. Guardar
 const saveProduct = async () => {
     const { valid } = await formRef.value.validate();
     if (!valid) return;
 
     saving.value = true;
-
-    // Usamos FormData para poder enviar ficheros
     const formData = new FormData();
     formData.append('name', form.name);
     formData.append('price', form.price);
-    formData.append('stock', form.stock); // Backend debe manejar esto
+    formData.append('stock', form.stock);
     if(form.category_id) formData.append('category_id', form.category_id);
     if(form.description_short) formData.append('description_short', form.description_short);
     if(form.description_long) formData.append('description_long', form.description_long);
 
-    // Imagen
-    const actualFile = Array.isArray(imageFile.value) ? imageFile.value[0] : imageFile.value;
-    if (actualFile) {
-        formData.append('image_file', actualFile);
+    // Detectamos si imageFile es un array o un archivo suelto
+    const rawFile = imageFile.value;
+    const fileToUpload = Array.isArray(rawFile) ? rawFile[0] : rawFile;
+
+    // Solo lo añadimos si realmente es un archivo válido
+    if (fileToUpload instanceof File) {
+        formData.append('image_file', fileToUpload);
     }
 
     try {
-        if (isEditing.value) {
-            // EDITAR (POST a la ruta de update)
-            await axios.post(`/api/admin/products/${route.params.id}`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-            snackbar.message = "Producto actualizado correctamente";
-        } else {
-            // CREAR
-            await axios.post('/api/admin/products', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            });
-            snackbar.message = "Producto creado con éxito";
-            router.push('/admin/products'); // Volver al listado
-        }
+        const url = isEditing.value
+            ? `/api/admin/products/${route.params.id}`
+            : '/api/admin/products';
+
+        // Axios pondrá el Content-Type correcto automáticamente
+        await axios.post(url, formData);
+
+        snackbar.message = isEditing.value ? "Producto actualizado" : "Producto creado";
         snackbar.show = true;
+        setTimeout(() => router.push('/admin/products'), 1000);
 
     } catch (error) {
         console.error(error);

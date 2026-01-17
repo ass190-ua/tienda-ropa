@@ -11,6 +11,7 @@ const Cart = () => import("../pages/Cart.vue");
 const Login = () => import("../pages/Login.vue");
 const Register = () => import("../pages/Register.vue");
 const ForgotPassword = () => import("../pages/ForgotPassword.vue");
+const ResetPassword = () => import("../pages/ResetPassword.vue");
 const Novedades = () => import("../pages/Novedades.vue");
 const Contacto = () => import("../pages/Contacto.vue");
 const SobreNosotros = () => import("../pages/SobreNosotros.vue");
@@ -25,7 +26,6 @@ const PaymentResult = () => import("../pages/PaymentResult.vue");
 const Checkout = () => import("../pages/Checkout.vue");
 const Profile = () => import("../pages/Profile.vue");
 
-
 // --- ADMIN ---
 const AdminLayout = () => import("../components/layout/AdminLayout.vue");
 const AdminDashboard = () => import("../pages/admin/Dashboard.vue");
@@ -34,7 +34,7 @@ const AdminProductForm = () => import("../pages/admin/ProductForm.vue");
 const AdminUsers = () => import("../pages/admin/UserList.vue");
 const AdminOrders = () => import("../pages/admin/OrderList.vue");
 const AdminReviews = () => import("../pages/admin/ReviewList.vue");
-
+const AdminCoupons = () => import("../pages/admin/CouponList.vue");
 
 const router = createRouter({
     history: createWebHistory(),
@@ -53,6 +53,7 @@ const router = createRouter({
         { path: "/login", name: "login", component: Login },
         { path: "/register", name: "register", component: Register },
         { path: "/forgot-password", name: "ForgotPassword", component: ForgotPassword },
+        { path: "/reset-password", name: "ResetPassword", component: ResetPassword },
 
         // usuario
         { path: "/profile", name: "profile", component: Profile, meta: { requiresAuth: true } },
@@ -62,7 +63,6 @@ const router = createRouter({
         // AQUÍ ESTABA EL PRIMER CONFLICTO: MANTENEMOS AMBAS
         { path: "/pago/resultado", name: "paymentResult", component: PaymentResult, meta: { requiresAuth: true } },
         { path: "/checkout", name: "checkout", component: Checkout, meta: { requiresAuth: true } },
-
 
         // Footer / Info
         { path: '/novedades', component: Novedades },
@@ -116,6 +116,11 @@ const router = createRouter({
                     path: "reviews",
                     name: "admin-reviews",
                     component: AdminReviews
+                },
+                {
+                    path: 'coupons',
+                    name: 'AdminCoupons',
+                    component: AdminCoupons
                 }
             ]
         },
@@ -135,7 +140,7 @@ router.beforeEach(async (to, from, next) => {
     const auth = useAuthStore();
 
     // 1. Cargar usuario si no existe (Lógica común)
-    if (auth.user === null) {
+    if (!auth.initialized) {
         try { await auth.fetchUser(); } catch (e) { }
     }
 

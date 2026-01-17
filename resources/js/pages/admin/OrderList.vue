@@ -92,8 +92,8 @@
         </template>
 
         <template v-slot:item.total_amount="{ item }">
-          <span class="font-weight-bold text-green-darken-1">
-             {{ formatCurrency(item.subtotal || item.total_amount || 0) }}
+          <span :class="`font-weight-bold text-${getStatusColor(item.status)}`">
+             {{ formatCurrency(item.total) }}
           </span>
         </template>
 
@@ -204,12 +204,42 @@
                  </tbody>
                </v-table>
 
-               <div class="d-flex justify-end mt-4">
-                 <div class="text-right">
-                   <div class="text-h5 font-weight-bold text-green-darken-2">
-                     {{ formatCurrency(selectedOrder.subtotal || selectedOrder.total_amount) }}
+               <div class="d-flex justify-end mt-6">
+                 <div style="min-width: 250px;">
+
+                   <div class="d-flex justify-space-between mb-1">
+                     <span class="text-body-2 text-grey-darken-2">Subtotal</span>
+                     <span class="font-weight-medium">
+                        {{ formatCurrency(selectedOrder.subtotal) }}
+                     </span>
                    </div>
-                   <div class="text-caption text-grey">Total Pagado</div>
+
+                   <div v-if="totalDiscount > 0" class="d-flex justify-space-between mb-1 text-green-darken-1">
+                     <span class="text-body-2">
+                        Descuento
+                        <span v-if="selectedOrder.coupon" class="font-weight-bold text-caption">
+                            ({{ selectedOrder.coupon.code }})
+                        </span>
+                     </span>
+                     <span class="font-weight-medium">-{{ formatCurrency(totalDiscount) }}</span>
+                   </div>
+
+                   <div v-if="shippingCost > 0" class="d-flex justify-space-between mb-2">
+                     <span class="text-body-2 text-grey-darken-2">Gastos de Envío</span>
+                     <span class="font-weight-medium">{{ formatCurrency(shippingCost) }}</span>
+                   </div>
+
+                   <v-divider class="mb-2"></v-divider>
+
+                   <div class="d-flex justify-space-between align-center">
+                     <span class="text-subtitle-1 font-weight-bold text-grey-darken-3">Total</span>
+                     <div class="text-right">
+                       <div :class="`text-h5 font-weight-bold text-${getStatusColor(selectedOrder.status)}`">
+                         {{ formatCurrency(selectedOrder.total) }}
+                       </div>
+                     </div>
+                   </div>
+
                  </div>
                </div>
             </v-col>
@@ -222,7 +252,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import axios from 'axios';
 
 // Datos de la tabla
@@ -319,14 +349,15 @@ const exportOrders = () => {
   window.open(url + params.toString(), '_blank');
 };
 
-// NUEVO: Helper para recuperar imagen
+// Helper para recuperar imagen
 const getProductImage = (product) => {
     if (!product || !product.images || product.images.length === 0) {
-        return '/placeholder-image.jpg'; // Imagen por defecto si no hay
+        return '/placeholder-image.jpg';
     }
     const path = product.images[0].path;
-    // Si la ruta ya es completa (http) la usamos, si no, le pegamos /storage/
-    return path.startsWith('http') ? path : `/storage/${path}`;
+
+    // Quitamos la parte de `/storage/${path}`
+    return path.startsWith('http') ? path : (path.startsWith('/') ? path : `/${path}`);
 };
 
 const getStatusColor = (status) => {
@@ -354,6 +385,23 @@ const translateStatus = (status) => {
 const formatCurrency = (value) => {
   return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(value);
 };
+
+const totalDiscount = computed(() => {
+    if (!selectedOrder.value) return 0;
+    return (parseFloat(selectedOrder.value.discount_total) || 0) +
+           (parseFloat(selectedOrder.value.coupon_discount_total) || 0);
+});
+
+const shippingCost = computed(() => {
+    if (!selectedOrder.value) return 0;
+    const sub = parseFloat(selectedOrder.value.subtotal) || 0;
+    const disc = totalDiscount.value;
+    const tot = parseFloat(selectedOrder.value.total) || 0;
+
+    // El envío es la diferencia entre lo cobrado (total) y lo que valen los productos
+    const calc = tot - (sub - disc);
+    return calc > 0 ? calc : 0;
+});
 
 onMounted(() => {
     // La tabla carga datos automáticamente

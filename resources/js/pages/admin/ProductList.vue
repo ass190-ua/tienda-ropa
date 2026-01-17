@@ -42,7 +42,7 @@
         <template v-slot:item.image="{ item }">
           <div class="py-2">
              <v-img
-                :src="item.image || '/placeholder-garment.jpg'"
+                :src="getProductImage(item.image)"
                 aspect-ratio="1"
                 cover
                 width="60"
@@ -208,6 +208,26 @@ const deleteProductConfirm = async () => {
         deleting.value = false;
         itemToDelete.value = null;
     }
+};
+
+// Función para arreglar la ruta de la imagen
+const getProductImage = (path) => {
+    if (!path) return '/placeholder-garment.jpg';
+
+    // 1. Si es URL externa (http...), devolver tal cual
+    if (path.startsWith('http')) return path;
+
+    // 2. Si es foto antigua (está en carpeta 'images'), NO lleva /storage
+    if (path.includes('images/')) {
+        return path.startsWith('/') ? path : `/${path}`;
+    }
+
+    // 3. Si es foto nueva (Laravel Storage), DEBE llevar /storage
+    // Tu código anterior lo quitaba con .replace(), ¡eso es lo que fallaba!
+    if (path.startsWith('/storage')) return path;
+
+    // 4. Fallback: Si viene la ruta limpia "products/foto.jpg", le ponemos /storage
+    return `/storage/${path}`;
 };
 
 onMounted(fetchProducts);

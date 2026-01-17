@@ -93,15 +93,9 @@
                                     </div>
 
                                     <v-btn variant="outlined" size="large" block rounded="lg"
-                                        class="text-none social-btn" @click="onSocial('google')">
+                                        class="text-none social-btn" @click="onSocial('google')" :loading="loadingGoogle">
                                         <img src="../assets/google.png" class="social-logo" alt="Google" />
                                         Continuar con Google
-                                    </v-btn>
-
-                                    <v-btn variant="outlined" size="large" block rounded="lg"
-                                        class="text-none mt-3 social-btn" @click="onSocial('github')">
-                                        <img src="../assets/github.png" class="social-logo" alt="Github" />
-                                        Continuar con GitHub
                                     </v-btn>
 
                                     <div class="text-center mt-7">
@@ -121,7 +115,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useAuthStore } from '../stores/auth' // <--- Importamos el store
+import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
 const route = useRoute()
@@ -132,6 +126,7 @@ const email = ref('')
 const password = ref('')
 const remember = ref(true)
 const showPassword = ref(false)
+const loadingGoogle = ref(false);
 
 const loading = ref(false)
 const errorMsg = ref('')
@@ -143,7 +138,7 @@ const emailRules = [
 ]
 const passwordRules = [
     v => !!v || 'La contraseña es obligatoria',
-    v => (v?.length ?? 0) >= 6 || 'Mínimo 6 caracteres',
+    v => (v?.length ?? 0) >= 8 || 'Mínimo 8 caracteres',
 ]
 
 async function onSubmit() {
@@ -178,9 +173,12 @@ async function onSubmit() {
     }
 }
 
-function onSocial(provider) {
-    errorMsg.value = `Login con ${provider} aún no está conectado.`
-}
+const onSocial = (provider) => {
+    loadingGoogle.value = true;
+    // Esto iniciará el viaje de ida y vuelta.
+    // Al volver, aterrizarás en '/' ya logueado.
+    window.location.href = '/api/auth/google/redirect';
+};
 </script>
 
 <style scoped>

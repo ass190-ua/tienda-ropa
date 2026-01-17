@@ -31,35 +31,11 @@
                     pauseOnMouseEnter: true
                 }">
                 <SwiperSlide v-for="p in products" :key="p.id">
-                    <router-link :to="`/producto/${p.id}`" class="card-link">
-                        <v-card class="product-card" elevation="0">
-                            <v-btn class="wishlist-btn" icon variant="flat" size="small"
-                                :aria-label="wishlist.isInWishlist(p.id) ? 'Quitar de favoritos' : 'Añadir a favoritos'"
-                                @click.prevent.stop="toggleWishlist(p.id)">
-                                <v-icon :icon="wishlist.isInWishlist(p.id) ? 'mdi-heart' : 'mdi-heart-outline'" />
-                            </v-btn>
-                            <v-img height="170" cover :src="productImage(p) || undefined" class="product-img">
-                                <template #placeholder>
-                                    <div class="placeholder">
-                                        <v-icon size="34" class="mb-2">mdi-image-off-outline</v-icon>
-                                        <div class="text-medium-emphasis">Sin imagen</div>
-                                    </div>
-                                </template>
-                            </v-img>
-
-                            <v-card-text class="pt-3">
-                                <div class="name">
-                                    {{ p.name }}
-                                </div>
-                                <div class="price">
-                                    {{ formatPrice(p.price) }}
-                                </div>
-                            </v-card-text>
-                        </v-card>
-                    </router-link>
+                    <ProductCard :product="p" @quick-view="openQuickView" />
                 </SwiperSlide>
             </Swiper>
         </div>
+        <VistaRapidaDialog v-model="quickViewOpen" :product="quickViewProduct" :colors-palette="colors" />
     </section>
 </template>
 
@@ -69,6 +45,9 @@ import axios from "axios";
 import { useWishlistStore } from "@/stores/wishlist";
 import { Swiper, SwiperSlide } from "swiper/vue";
 import { Navigation, Autoplay } from "swiper/modules";
+import VistaRapidaDialog from "@/components/VistaRapidaDialog.vue";
+import ProductCard from "@/components/ProductCard.vue";
+
 
 import "swiper/css";
 import "swiper/css/navigation";
@@ -86,6 +65,32 @@ const wishlist = useWishlistStore();
 const products = ref([]);
 const loading = ref(false);
 const error = ref(false);
+
+const quickViewOpen = ref(false);
+const quickViewProduct = ref(null);
+
+function openQuickView(p) {
+    quickViewProduct.value = p;
+    quickViewOpen.value = true;
+}
+
+const colorHexMap = {
+    Azul: '#2F6FED',
+    Rojo: '#E53935',
+    Verde: '#43A047',
+    Amarillo: '#FDD835',
+    Morado: '#8E24AA',
+    Negro: '#111111',
+    Blanco: '#FFFFFF',
+    Beige: '#D6C3A5',
+    Gris: '#9E9E9E',
+    Marrón: '#6D4C41',
+    Rosa: '#EC407A',
+}
+const colors = computed(() =>
+    Object.entries(colorHexMap).map(([name, hex]) => ({ name, hex }))
+)
+
 
 const breakpoints = {
     600: { slidesPerView: 2.2, spaceBetween: 16 },
@@ -112,7 +117,7 @@ async function fetchProducts() {
     error.value = false;
 
     try {
-        const res = await axios.get("/api/products/home", {
+        const res = await axios.get("/api/products/novedades-grouped", {
             params: { category_id: props.categoryId, limit: props.limit },
         });
 
@@ -123,6 +128,10 @@ async function fetchProducts() {
         products.value = raw.map(p => ({
             ...p,
             images: Array.isArray(p.images) ? p.images : [],
+            product_ids: Array.isArray(p.product_ids) ? p.product_ids : [],
+            colors: Array.isArray(p.colors) ? p.colors : [],
+            sizes: Array.isArray(p.sizes) ? p.sizes : [],
+            representative_id: p.representative_id ?? p.id,
         }));
     } catch (e) {
         error.value = true;
@@ -133,14 +142,31 @@ async function fetchProducts() {
 }
 
 
-async function toggleWishlist(productId) {
+function groupIds(p) {
+    const ids = Array.isArray(p?.product_ids) ? p.product_ids : [];
+    return ids.length ? ids : [p.id];
+}
+
+function isWishlisted(p) {
+    return wishlist.isGroupInWishlist(groupIds(p));
+}
+
+async function toggleWishlistGroup(p) {
     try {
-        if (wishlist.isInWishlist(productId)) await wishlist.remove(productId);
-        else await wishlist.add(productId);
+        // Buscamos si YA hay alguna variante de esta prenda en wishlist
+        const existingId = wishlist.findWishlistedProductId(groupIds(p));
+
+        if (existingId) {
+            await wishlist.remove(existingId);
+        } else {
+            await wishlist.add(p.representative_id ?? p.id);
+        }
+        await wishlist.toggleGroup(groupIds(p), p.representative_id ?? p.id);
     } catch (e) {
         // No rompemos el carrusel si no hay sesión o falla el backend
     }
 }
+
 
 
 onMounted(fetchProducts);
@@ -202,14 +228,13 @@ watch(() => [props.categoryId, props.limit], fetchProducts);
 }
 
 .product-card {
-  position: relative;
+    position: relative;
 }
 
 .wishlist-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 2;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 2;
 }
-
 </style>

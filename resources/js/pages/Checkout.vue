@@ -35,9 +35,10 @@
                                     </v-row>
 
                                     <div class="d-flex justify-end ga-2 mt-2">
-                                        <v-btn variant="text" @click="goCart">Volver al carrito</v-btn>
-                                        <v-btn color="primary" type="submit" class="text-none"
-                                            rounded="lg">Continuar</v-btn>
+                                        <v-btn variant="text" @click="goCart" :disabled="cart.syncing">Volver al
+                                            carrito</v-btn>
+                                        <v-btn color="primary" type="submit" class="text-none" rounded="lg"
+                                            :disabled="cart.syncing">Continuar</v-btn>
                                     </div>
                                 </v-form>
                             </div>
@@ -93,10 +94,10 @@
                                     </v-row>
 
                                     <div class="d-flex justify-end ga-2 mt-2">
-                                        <v-btn variant="text" class="text-none" rounded="lg"
-                                            @click="step = '1'">Atrás</v-btn>
-                                        <v-btn color="primary" type="submit" class="text-none"
-                                            rounded="lg">Continuar</v-btn>
+                                        <v-btn variant="text" class="text-none" rounded="lg" @click="step = '1'"
+                                            :disabled="cart.syncing">Atrás</v-btn>
+                                        <v-btn color="primary" type="submit" class="text-none" rounded="lg"
+                                            :disabled="cart.syncing">Continuar</v-btn>
                                     </div>
                                 </v-form>
                             </div>
@@ -109,9 +110,15 @@
                             <div :key="'step-3'" class="step-panel">
                                 <div class="text-h6 font-weight-medium mb-3">Resumen</div>
 
-                                <v-alert v-if="cart.isEmpty" type="warning" variant="tonal" class="mb-4">
-                                    Tu carrito está vacío.
-                                </v-alert>
+                                <div v-if="cart.isEmpty">
+                                    <v-alert type="warning" variant="tonal" class="mb-4">
+                                        Tu carrito está vacío.
+                                    </v-alert>
+
+                                    <v-btn color="primary" class="text-none" :to="{ name: 'shop' }">
+                                        Ir a la tienda
+                                    </v-btn>
+                                </div>
 
                                 <v-row v-else>
                                     <v-col cols="12" md="7">
@@ -182,7 +189,7 @@
                                                 :loading="applyingCoupon" class="mt-3">
                                                 <template #append-inner>
                                                     <v-btn size="small" class="text-none"
-                                                        :disabled="!couponCode || applyingCoupon || !!appliedCoupon"
+                                                        :disabled="!couponCode || applyingCoupon || !!appliedCoupon || cart.syncing"
                                                         @click="applyCoupon">
                                                         Aplicar
                                                     </v-btn>
@@ -203,7 +210,8 @@
                                                     </v-chip>
 
                                                     <v-btn variant="text" size="small" class="text-none"
-                                                        prepend-icon="mdi-close" @click="removeCoupon">
+                                                        prepend-icon="mdi-close" @click="removeCoupon"
+                                                        :disabled="cart.syncing">
                                                         Quitar
                                                     </v-btn>
                                                 </div>
@@ -224,14 +232,10 @@
                                                 <div>{{ money(totalToPay) }}</div>
                                             </div>
 
-                                            <v-alert v-if="paymentError" type="error" variant="tonal" class="mt-3"
-                                                rounded="lg">
-                                                {{ paymentError }}
-                                            </v-alert>
-
                                             <v-btn class="text-none mt-4" color="primary" size="large" block
-                                                :loading="isPaying" :disabled="cart.isEmpty || isPaying" @click="pay"
-                                                prepend-icon="mdi-credit-card-outline">
+                                                :loading="isPaying"
+                                                :disabled="cart.isEmpty || isPaying || cart.syncing || !!paymentError"
+                                                @click="pay" prepend-icon="mdi-credit-card-outline">
                                                 Pagar
                                             </v-btn>
 
@@ -265,7 +269,6 @@ const auth = useAuthStore()
 const cart = useCartStore()
 
 const isPaying = ref(false)
-const paymentError = ref('')
 
 const step = ref('1')
 const stepNum = computed(() => Number(step.value))
@@ -280,6 +283,8 @@ const appliedCoupon = ref(null)
 
 const applyingCoupon = ref(false)
 const couponError = ref('')
+
+const paymentError = ref('')
 
 const couponDiscount = computed(() => Number(appliedCoupon.value?.discount_amount ?? 0))
 
@@ -491,7 +496,12 @@ async function goStep3() {
 }
 
 async function pay() {
-    if (cart.isEmpty || isPaying.value) return
+    if (cart.isEmpty || isPaying.value || cart.syncing) return
+
+    if (!auth.isAuthenticated) {
+        router.push('/login')
+        return
+    }
 
     paymentError.value = ''
     isPaying.value = true
@@ -500,8 +510,62 @@ async function pay() {
         const amount = Number(totalToPay.value.toFixed(2))
 
         let resp
+
+        const payload = {}
+        if (appliedCoupon.value?.code) payload.coupon_code = appliedCoupon.value.code
+
+        console.log('[Checkout] Pagando... carrito', {
+            totalToPay: totalToPay.value,
+            totalItems: cart.totalItems,
+            items: cart.items.map(it => ({
+                product_id: it.product?.id ?? it.product_id ?? null,
+                qty: Number(it.qty ?? it.quantity ?? 1),
+                name: it.product?.name ?? it.name ?? 'Producto',
+            }))
+            ,
+            coupon: appliedCoupon.value?.code ?? null,
+        })
+
+        try { await cart.refreshAvailabilityForCart?.() } catch { }
+
+        const issues = (cart.items ?? [])
+            .map((it) => {
+                const pid = Number(it.product?.id ?? it.product_id ?? it.productId ?? 0)
+                const qty = Number(it.qty ?? it.quantity ?? 0)
+
+                const st = cart.lineAvailabilityStatus?.(it)
+
+                return {
+                    name: it.product?.name ?? it.name ?? 'Producto',
+                    state: st?.state ?? 'OK',
+                    ok: st?.ok ?? true,
+                    available: Number(st?.available ?? 0),
+                    qty,
+                }
+            })
+            .filter(x => x.ok === false)
+
+        if (issues.length) {
+            sessionStorage.setItem('tiendamoda_stock_issue', JSON.stringify({
+                at: Date.now(),
+                issues: issues.map(x => ({
+                    name: x.name,
+                    state: x.state,
+                    available: x.available,
+                    qty: x.qty,
+                })),
+            }))
+
+            router.push({ name: 'cart', query: { stock: '1' } })
+            return
+        }
+
+        resp = await axios.post('/api/checkout/start', payload)
+
+        console.log('[Checkout] /checkout/start OK', resp?.data)
+
+        const serverAmount = Number(resp?.data?.amount ?? amount)
         try {
-            resp = await axios.post('/api/checkout/start', { amount })
         } catch (e) {
             // Si es 419, pedimos csrf-cookie y reintentamos UNA vez
             if (e?.response?.status === 419) {
@@ -519,20 +583,20 @@ async function pay() {
             throw new Error('No se recibió paymentUrl/token desde el backend.')
         }
 
-        const items = cart.items
-            .map(it => ({ product_id: it.product?.id, qty: Number(it.qty ?? 1) }))
+        const items = (cart.items ?? [])
+            .map(it => ({
+                product_id: it.product?.id ?? it.product_id ?? null,
+                qty: Number(it.qty ?? it.quantity ?? 1),
+                name: it.product?.name ?? it.name ?? null,
+            }))
             .filter(i => i.product_id && i.qty > 0)
-
-        if (items.length === 0) {
-            throw new Error('No se pudieron obtener los productos del carrito (product_id).')
-        }
 
         localStorage.setItem('tiendamoda_pending_order', JSON.stringify({
             id: token,
             token,
             createdAt: Date.now(),
             status: 'PENDING',
-            total: amount,
+            total: serverAmount,
             currency: 'EUR',
             itemsCount: cart.totalItems,
             coupon: appliedCoupon.value ? { ...appliedCoupon.value } : null,
@@ -544,14 +608,23 @@ async function pay() {
             items,
         }))
 
+        console.log('[Checkout] Redirigiendo a TPV', { paymentUrl, token, serverAmount })
+
         window.location.href = paymentUrl
     } catch (e) {
-        paymentError.value =
-            e?.response?.data?.message ||
-            e?.response?.data?.error ||
-            e?.message ||
-            'No se pudo iniciar el pago. Inténtalo de nuevo.'
         console.error('Error iniciando pago:', e)
+
+        const status = e?.response?.status
+        const data = e?.response?.data
+
+        if (status === 422) {
+            // Si backend manda message + code
+            console.log('[Checkout] 422 STOCK ANTES DE TPV', data)
+            paymentError.value = data?.message || 'No hay stock suficiente para iniciar el pago.'
+            return
+        }
+
+        paymentError.value = 'No se ha podido iniciar el pago. Inténtalo de nuevo.'
     } finally {
         isPaying.value = false
     }

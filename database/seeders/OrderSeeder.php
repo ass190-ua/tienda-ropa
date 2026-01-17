@@ -21,7 +21,7 @@ class OrderSeeder extends Seeder
             Order::STATUS_CANCELLED,
         ];
 
-        
+
         User::all()->each(function ($user) use ($statuses) {
             $coupons = Coupon::where('is_active', true)->get();
 

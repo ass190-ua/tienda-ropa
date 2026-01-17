@@ -18,6 +18,7 @@ import { useAuthStore } from './stores/auth'
 import { useRoute } from 'vue-router';
 import { useCartStore } from './stores/cart'
 import { useWishlistStore } from './stores/wishlist'
+import axios from 'axios'
 import AppHeader from './components/layout/AppHeader.vue'
 import AppFooter from './components/layout/AppFooter.vue'
 import ScrollToTop from './components/ScrollToTop.vue'
@@ -30,13 +31,20 @@ const wishlist = useWishlistStore()
 
 watch(
     () => auth.user?.id,
-    (id) => cart.setOwner(id ?? null),
+    async (id) => {
+        cart.setOwner(id ?? null)
+
+        if (id) {
+            await wishlist.fetchWishlist()
+        } else {
+            wishlist.reset()
+        }
+    },
     { immediate: true }
 )
 
 onMounted(async () => {
     await auth.fetchUser()
-    try { await wishlist.fetchWishlist() } catch (_) { }
 })
 </script>
 

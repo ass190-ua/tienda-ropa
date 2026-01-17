@@ -107,6 +107,12 @@ const menuItems = [
     icon: 'mdi-comment-text-multiple',
     to: '/admin/reviews',
     color: 'purple-darken-1'
+  },
+  {
+    title: 'Cupones',
+    icon: 'mdi-ticket-percent',
+    to: '/admin/coupons',
+    color: 'pink-darken-1'
   }
 ];
 
@@ -118,7 +124,8 @@ const currentRouteName = computed(() => {
     'products-edit': 'Editar Producto',
     'orders': 'Pedidos',
     'users': 'Usuarios',
-    'reviews': 'Reseñas'
+    'reviews': 'Reseñas',
+    'coupons': 'Gestión de Cupones'
   };
   const match = Object.keys(names).find(key => route.path.includes(key));
   return match ? names[match] : 'Administración';

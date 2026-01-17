@@ -12,9 +12,9 @@ class AdminReviewController extends Controller
     public function index()
     {
         // Cargamos producto y usuario para mostrar nombres y fotos en la tabla
-        $reviews = Review::with(['user', 'product'])
-            ->orderBy('created_at', 'desc')
-            ->paginate(10);
+        $reviews = Review::with(['user', 'product.images'])
+        ->orderBy('created_at', 'desc')
+        ->paginate(10);
 
         return response()->json($reviews);
     }

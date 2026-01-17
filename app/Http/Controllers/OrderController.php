@@ -6,11 +6,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use App\Models\Order;
 use App\Models\Address;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Coupon;
+use App\Models\Cart;
+use App\Models\StockItem;
 
 class OrderController extends Controller
 {
@@ -126,9 +129,9 @@ class OrderController extends Controller
 
             'coupon_code' => ['nullable', 'string', 'max:50'],
 
-            'items' => ['required', 'array', 'min:1'],
-            'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
-            'items.*.qty' => ['required', 'integer', 'min:1'],
+            'items' => ['nullable', 'array'],
+            'items.*.product_id' => ['required_with:items', 'integer', 'exists:products,id'],
+            'items.*.qty' => ['required_with:items', 'integer', 'min:1'],
         ]);
 
         $token = $data['token'];
@@ -175,7 +178,40 @@ class OrderController extends Controller
             ], 422);
         }
 
-        return DB::transaction(function () use ($user, $data, $token) {
+        $cart = Cart::query()
+            ->where('user_id', $user->id)
+            ->with('items')
+            ->first();
+
+        $useCart = $cart && $cart->items->count() > 0;
+
+        if ($useCart) {
+            $checkoutItems = $cart->items
+                ->groupBy('product_id')
+                ->map(fn($g, $pid) => [
+                    'product_id' => (int) $pid,
+                    'qty' => (int) $g->sum('quantity'),
+                ])
+                ->values()
+                ->all();
+        } else {
+            $checkoutItems = collect($data['items'] ?? [])
+                ->groupBy('product_id')
+                ->map(fn($g, $pid) => [
+                    'product_id' => (int) $pid,
+                    'qty' => (int) $g->sum('qty'),
+                ])
+                ->values()
+                ->all();
+        }
+
+        if (count($checkoutItems) === 0) {
+            return response()->json([
+                'message' => 'El carrito está vacío o no se pudieron obtener los items para el pedido.'
+            ], 422);
+        }
+
+        return DB::transaction(function () use ($user, $data, $token, $checkoutItems, $useCart, $cart) {
             // Direcciones
             $shippingAddr = Address::create([
                 'user_id' => $user->id,
@@ -208,11 +244,44 @@ class OrderController extends Controller
 
             $subtotal = 0.0;
 
-            foreach ($data['items'] as $it) {
-                $product = Product::findOrFail($it['product_id']);
-                $qty = (int)$it['qty'];
+            foreach ($checkoutItems as $it) {
+                $productId = (int) $it['product_id'];
+                $qty = (int) $it['qty'];
 
-                $unit = (float)$product->price; // precio real en BD
+                if ($qty <= 0) continue;
+
+                // Bloqueamos filas de stock para este producto (evita carreras)
+                $stockRows = StockItem::query()
+                    ->where('product_id', $productId)
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+
+                $stockTotal = (int) $stockRows->sum('quantity');
+
+                if ($stockTotal < $qty) {
+                    throw new HttpResponseException(response()->json([
+                        'message' => 'Stock insuficiente para completar el pedido.',
+                        'product_id' => $productId,
+                        'requested' => $qty,
+                        'stock_total' => $stockTotal,
+                    ], 422));
+                }
+
+                $remaining = $qty;
+                foreach ($stockRows as $row) {
+                    if ($remaining <= 0) break;
+
+                    $take = min((int)$row->quantity, $remaining);
+                    if ($take > 0) {
+                        $row->quantity = (int)$row->quantity - $take;
+                        $row->save();
+                        $remaining -= $take;
+                    }
+                }
+
+                $product = Product::findOrFail($productId);
+                $unit = (float) $product->price;
                 $line = $unit * $qty;
 
                 $subtotal += $line;
@@ -273,6 +342,11 @@ class OrderController extends Controller
                 'status' => Payment::STATUS_SUCCESS,
                 'transaction_id' => $token,
             ]);
+
+            if ($useCart && $cart) {
+                $cart->items()->delete();
+                $cart->touch();
+            }
 
             return response()->json([
                 'data' => [

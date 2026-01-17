@@ -7,9 +7,13 @@ use App\Models\Attribute;
 use App\Models\AttributeValue;
 use App\Models\Product;
 use Illuminate\Support\Str;
+use Database\Seeders\products\SeedsProductImages;
+use App\Models\ProductImage;
 
 class BottomsSeeder extends Seeder
 {
+    use SeedsProductImages;
+    
     public function run(): void
     {
         // ===== ATRIBUTOS =====
@@ -108,13 +112,23 @@ class BottomsSeeder extends Seeder
                 $isKid = in_array($categoryName, ['Niño','Niña']);
                 $sizesToUse = $isKid ? $sizesKids : $sizesAdult;
 
+                // Estos 3 son iguales para todos los "productos base" de este type+category
+                $group = 'ropa';
+                $typeSlug = $this->slug($type);            // pantalon / falda
+                $catSlug  = $this->catSlug($categoryName); // hombre/mujer/nino/nina
+
                 foreach ($names as $name) {
 
                     $price = rand($priceRanges[$type][0], $priceRanges[$type][1]);
 
+                    // Se decide UNA SOLA VEZ por "producto base" (name+type+category)
+                    $baseImageRows = null;
+
                     foreach ($colorsCommon as $colorName) {
                         foreach ($sizesToUse as $sizeName) {
-                            Product::create([
+
+                            // IMPORTANTE: guardamos el producto creado
+                            $product = Product::create([
                                 'name' => $name,
                                 'url'  => Str::slug($name.'-'.uniqid()),
                                 'description_short' => $name,
@@ -125,10 +139,33 @@ class BottomsSeeder extends Seeder
                                 'color_id' => $colors[$colorName]->id,
                                 'size_id'  => $sizes[$sizeName]->id,
                             ]);
+
+                            // Primera variante: creamos imágenes y guardamos sus paths
+                            if ($baseImageRows === null) {
+
+                                $this->seedImagesForProduct($product->id, $group, $typeSlug, $catSlug, 3);
+
+                                $baseImageRows = ProductImage::where('product_id', $product->id)
+                                    ->orderBy('sort_order')
+                                    ->get(['path','sort_order'])
+                                    ->map(fn($r) => ['path' => $r->path, 'sort_order' => $r->sort_order])
+                                    ->toArray();
+
+                            } else {
+                                // Resto de variantes: copiamos las mismas imágenes
+                                foreach ($baseImageRows as $row) {
+                                    ProductImage::create([
+                                        'product_id' => $product->id,
+                                        'path'       => $row['path'],
+                                        'sort_order' => $row['sort_order'],
+                                    ]);
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+
     }
 }

@@ -7,9 +7,13 @@ use App\Models\Attribute;
 use App\Models\AttributeValue;
 use App\Models\Product;
 use Illuminate\Support\Str;
+use Database\Seeders\products\SeedsProductImages;
+use App\Models\ProductImage;
 
 class TopsSeeder extends Seeder
 {
+    use SeedsProductImages;
+
     public function run(): void
     {
         // ===== ATRIBUTOS =====
@@ -154,7 +158,7 @@ class TopsSeeder extends Seeder
         foreach ($catalog as $type => $byCategory) {
             foreach ($byCategory as $categoryName => $names) {
 
-                $isKid = in_array($categoryName,['Niño','Niña']);
+                $isKid = in_array($categoryName, ['Niño','Niña']);
                 $sizesToUse  = $isKid ? $sizesKids : $sizesAdult;
                 $colorsToUse = $isKid ? $colorsKids : $colorsAdult;
 
@@ -162,12 +166,22 @@ class TopsSeeder extends Seeder
                     $colorsToUse = ['Negro','Blanco','Gris'];
                 }
 
+                // path images (siempre ropa aquí)
+                $group = 'ropa';
+                $typeSlug = $this->slug($type);            // camiseta/camisa/top/chaqueta/vestido
+                $catSlug  = $this->catSlug($categoryName); // hombre/mujer/nino/nina
+
                 foreach ($names as $name) {
+
                     $price = rand($priceRanges[$type][0], $priceRanges[$type][1]);
+
+                    // mismas imágenes para todas las variantes de ESTE "producto base"
+                    $baseImageRows = null;
 
                     foreach ($colorsToUse as $colorName) {
                         foreach ($sizesToUse as $sizeName) {
-                            Product::create([
+
+                            $product = Product::create([
                                 'name' => $name,
                                 'url'  => Str::slug($name.'-'.uniqid()),
                                 'description_short' => $name,
@@ -178,10 +192,29 @@ class TopsSeeder extends Seeder
                                 'color_id' => $colors[$colorName]->id,
                                 'size_id'  => $sizes[$sizeName]->id,
                             ]);
+
+                            if ($baseImageRows === null) {
+                                $this->seedImagesForProduct($product->id, $group, $typeSlug, $catSlug, 3);
+
+                                $baseImageRows = ProductImage::where('product_id', $product->id)
+                                    ->orderBy('sort_order')
+                                    ->get(['path','sort_order'])
+                                    ->map(fn($r) => ['path' => $r->path, 'sort_order' => $r->sort_order])
+                                    ->toArray();
+                            } else {
+                                foreach ($baseImageRows as $row) {
+                                    ProductImage::create([
+                                        'product_id' => $product->id,
+                                        'path'       => $row['path'],
+                                        'sort_order' => $row['sort_order'],
+                                    ]);
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+
     }
 }

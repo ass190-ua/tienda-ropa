@@ -24,16 +24,12 @@
             </div>
 
             <div v-else>
-                <v-btn color="primary" rounded="lg" @click="router.push('/shop')">
+                <v-btn v-if="!loading" color="primary" rounded="lg" @click="router.push('/shop')">
                     Explorar tienda
                 </v-btn>
             </div>
         </div>
-
-        <!-- Loading -->
-        <v-alert v-if="loading" type="info" variant="tonal" class="mb-4">
-            Cargando wishlist...
-        </v-alert>
+        <v-progress-linear v-if="loading" indeterminate class="mb-4" />
 
         <!-- Error -->
         <v-alert v-if="wishlist.error" type="error" variant="tonal" class="mb-4">
@@ -54,47 +50,35 @@
             </div>
         </v-card>
 
-        <!-- Grid -->
-        <v-row v-if="!loading && items.length" class="mt-2" dense>
-            <v-col v-for="p in pagedItems" :key="p.id" cols="12" sm="6" md="4" lg="3">
-                <v-card rounded="xl" elevation="2" class="h-100 d-flex flex-column">
-                    <div class="img-wrap">
-                        <v-img :src="productImage(p) || undefined" height="230" cover class="rounded-xl product-img"
-                            role="button" tabindex="0" @click="openQuickView(p)"
-                            @keydown.enter.prevent="openQuickView(p)">
-                        </v-img>
+        <!-- Grid por categorías -->
+        <div v-if="!loading && items.length" class="mt-2">
+            <section v-for="sec in sections" :key="sec.id" class="mb-10">
+                <div class="d-flex align-center justify-space-between mb-3">
+                    <h2 class="text-h6 font-weight-bold">{{ sec.title }}</h2>
+                    <div class="text-medium-emphasis" v-if="sec.items.length">
+                        {{ sec.items.length }} {{ sec.items.length === 1 ? 'prenda' : 'prendas' }}
                     </div>
+                </div>
 
-                    <v-card-text class="pb-0">
-                        <div class="text-subtitle-1 font-weight-bold">
-                            {{ p.name }}
+                <transition-group name="fade-move" tag="div" class="v-row v-row--dense">
+                    <div v-for="p in sectionPagedItems(sec)" :key="p.id"
+                        class="v-col-12 v-col-sm-6 v-col-md-4 v-col-lg-3">
+                        <div class="d-flex flex-column h-100">
+                            <ProductCard :product="p" wishlist-controlled @quick-view="openQuickView"
+                                @wishlist-click="onWishlistClick" />
                         </div>
-                        <div class="text-medium-emphasis mt-1">
-                            {{ formatPrice(p.price) }}
-                        </div>
-                    </v-card-text>
+                    </div>
+                </transition-group>
 
-                    <v-spacer />
+                <div class="d-flex justify-center mt-4" v-if="sectionPageCount(sec) > 1">
+                    <v-pagination :model-value="getSectionPage(sec.id)"
+                        @update:model-value="setSectionPage(sec.id, $event)" :length="sectionPageCount(sec)"
+                        :total-visible="5" prev-icon="mdi-chevron-left" next-icon="mdi-chevron-right" rounded="lg" />
+                </div>
 
-                    <v-card-actions class="pa-4 pt-3 d-flex ga-2">
-                        <v-btn color="primary" variant="flat" rounded="lg" class="flex-grow-1"
-                            @click="openQuickView(p)">
-                            Vista rápida
-                        </v-btn>
-
-                        <v-btn variant="outlined" rounded="lg" color="error" @click="askRemove(p)"
-                            :loading="wishlist.loading">
-                            <v-icon icon="mdi-delete-outline" />
-                        </v-btn>
-                    </v-card-actions>
-                </v-card>
-            </v-col>
-        </v-row>
-
-        <div class="pagination-wrap" v-if="pageCount > 1">
-            <v-pagination v-model="page" :length="pageCount" :total-visible="5" prev-icon="mdi-chevron-left"
-                next-icon="mdi-chevron-right" rounded="lg" />
+            </section>
         </div>
+
 
         <!-- Skeleton mientras carga -->
         <v-row v-else-if="loading" class="mt-2" dense>
@@ -158,22 +142,94 @@
     </v-container>
 </template>
 
+
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 import { useWishlistStore } from '../stores/wishlist'
 import { useCartStore } from '../stores/cart'
+import { useAuthStore } from '../stores/auth'
 import VistaRapidaDialog from '../components/VistaRapidaDialog.vue'
+import ProductCard from '../components/ProductCard.vue'
+
 
 const router = useRouter()
+const auth = useAuthStore()
 const wishlist = useWishlistStore()
 const cart = useCartStore()
 
-const items = computed(() => prendasFavoritas.value)
-
-const loading = ref(false)
 const groupedBase = ref([])
+const groupedLoading = ref(false)
+let groupedTimer = null
+
+
+const prendasFavoritas = computed(() => {
+    return groupedBase.value.filter(p => wishlist.isGroupInWishlist(p.product_ids))
+})
+
+const items = computed(() => prendasFavoritas.value)
+const CATEGORY_SECTIONS = [
+    { id: 39, title: 'Mujer' },
+    { id: 40, title: 'Hombre' },
+    { id: 41, title: 'Niño' },
+    { id: 42, title: 'Niña' },
+    { id: 43, title: 'Zapatos Mujer' },
+    { id: 44, title: 'Zapatos Hombre' },
+    { id: 45, title: 'Zapatos Niño' },
+    { id: 46, title: 'Zapatos Niña' },
+]
+
+function getCategoryId(p) {
+    const n = Number(p?.category_id ?? p?.categoryId ?? p?.category?.id ?? p?.category ?? null)
+    return Number.isFinite(n) ? n : null
+}
+
+const sections = computed(() => {
+    const byId = new Map(CATEGORY_SECTIONS.map(s => [s.id, []]))
+    const others = []
+
+    for (const p of items.value) {
+        const cid = getCategoryId(p)
+        if (cid != null && byId.has(cid)) byId.get(cid).push(p)
+        else others.push(p)
+    }
+
+    const out = CATEGORY_SECTIONS
+        .map(s => ({ ...s, items: byId.get(s.id) }))
+        .filter(s => s.items.length)
+
+    if (others.length) out.push({ id: 'otros', title: 'Otros', items: others })
+    return out
+})
+
+const PER_SECTION = 4
+const pageBySection = ref({}) // { [secId]: pageNumber }
+
+function getSectionPage(secId) {
+    return Number(pageBySection.value?.[secId] ?? 1)
+}
+
+function setSectionPage(secId, n) {
+    pageBySection.value = { ...pageBySection.value, [secId]: Number(n) }
+}
+
+function sectionPageCount(sec) {
+    return Math.ceil((sec?.items?.length ?? 0) / PER_SECTION) || 1
+}
+
+function sectionPagedItems(sec) {
+    const page = getSectionPage(sec.id)
+    const start = (page - 1) * PER_SECTION
+    return sec.items.slice(start, start + PER_SECTION)
+}
+
+const initialLoading = ref(true)
+
+const loading = computed(() =>
+    !auth.initialized || initialLoading.value
+)
+
 
 const quickViewOpen = ref(false)
 const quickProduct = ref(null)
@@ -181,17 +237,9 @@ const quickProduct = ref(null)
 const confirmOpen = ref(false)
 const pendingRemove = ref(null)
 
-const prendasFavoritas = computed(() => {
-    return groupedBase.value.filter(p => wishlist.isGroupInWishlist(p.product_ids))
-})
+const confirmClearOpen = ref(false)
 
-const perPage = 8
-const page = ref(1)
-const pageCount = computed(() => Math.ceil(items.value.length / perPage) || 1)
-const pagedItems = computed(() => {
-    const start = (page.value - 1) * perPage
-    return items.value.slice(start, start + perPage)
-})
+const snackbar = ref({ open: false, text: '' })
 
 const colorHexMap = {
     Azul: '#2F6FED',
@@ -206,51 +254,115 @@ const colorHexMap = {
     Marrón: '#6D4C41',
     Rosa: '#EC407A',
 }
-
 const colors = computed(() =>
     Object.entries(colorHexMap).map(([name, hex]) => ({ name, hex }))
 )
 
-const snackbar = ref({ open: false, text: '' })
-
-const confirmClearOpen = ref(false)
-
-
 onMounted(async () => {
-    loading.value = true
-    try {
-        await wishlist.fetchWishlist()
-        console.log('[Wishlist] wishlist.items:', wishlist.items)
-
-        await fetchGroupedBase()
-    } catch (e) {
-        console.error('[Wishlist] error onMounted:', e)
-    } finally {
-        loading.value = false
+    if (!auth.initialized) {
+        await auth.fetchUser()
     }
+
+    if (!auth.isAuthenticated) {
+        router.push({ name: 'login', query: { redirect: '/wishlist' } })
+        return
+    }
+
+    await wishlist.fetchWishlist()
+
+    console.log('[Wishlist.vue] wishlist.items (raw):', wishlist.items)
+    console.log('[Wishlist.vue] wishlist.ids:', wishlist.items.map(p => p?.id))
+
+    await fetchGroupedBase()
+    initialLoading.value = false
 })
 
 watch(
-    () => items.value.length,
+    () => sections.value.map(s => `${s.id}:${s.items.length}`).join('|'),
     () => {
-        if (page.value > pageCount.value) page.value = pageCount.value
+        const next = { ...pageBySection.value }
+        for (const sec of sections.value) {
+            const max = sectionPageCount(sec)
+            const cur = Number(next[sec.id] ?? 1)
+            if (cur > max) next[sec.id] = max
+            if (cur < 1) next[sec.id] = 1
+        }
+        pageBySection.value = next
     }
 )
 
 
-async function fetchGroupedBase() {
-    const ids = wishlist.items.map(p => Number(p.id)).filter(n => Number.isFinite(n))
-    const { data } = await axios.post('/api/products/grouped-by-ids', { ids })
+watch(
+    () => wishlist.items.map(x => Number(x.product_id ?? x.id ?? x.product?.id)).join(','),
+    async () => {
+        if (!auth.isAuthenticated) return
+        if (groupedTimer) clearTimeout(groupedTimer)
+        groupedTimer = setTimeout(() => {
+            fetchGroupedBase()
+        }, 120)
+    }
+)
 
-    groupedBase.value = (Array.isArray(data) ? data : []).map(p => ({
-        ...p,
-        representative_id: p.representative_id ?? p.id,
-        product_ids: Array.isArray(p.product_ids) ? p.product_ids : [p.id],
-    }))
+watch(
+    [() => wishlist.items, () => groupedBase.value],
+    () => {
+        console.log('[Wishlist.vue] groupedBase.length:', groupedBase.value.length)
+        console.log('[Wishlist.vue] prendasFavoritas.length:', prendasFavoritas.value.length)
+
+        if (groupedBase.value[0]) {
+            console.log('[Wishlist.vue] sample group product_ids:', groupedBase.value[0]?.product_ids)
+        }
+    },
+    { deep: true }
+)
+
+async function fetchGroupedBase() {
+    const productIds = wishlist.items
+        .map(p => Number(p?.id))
+        .filter(n => Number.isFinite(n))
+
+    console.log('[Wishlist.vue] productIds -> grouped-by-ids:', productIds)
+
+    if (productIds.length === 0) {
+        groupedBase.value = []
+        return
+    }
+
+    groupedLoading.value = true
+    try {
+        const payload = { ids: productIds, product_ids: productIds }
+        console.log('[Wishlist.vue] POST /api/products/grouped-by-ids payload:', payload)
+
+        const { data } = await axios.post('/api/products/grouped-by-ids', payload)
+
+        console.log('[Wishlist.vue] grouped-by-ids response raw:', data)
+
+        groupedBase.value = (Array.isArray(data) ? data : (data?.items ?? data?.products ?? [])).map(p => {
+            let ids =
+                Array.isArray(p.product_ids) ? p.product_ids :
+                    Array.isArray(p.productIds) ? p.productIds :
+                        typeof p.product_ids === 'string' ? p.product_ids.split(',') :
+                            []
+
+            ids = ids.map(x => Number(x)).filter(n => Number.isFinite(n))
+
+            return {
+                ...p,
+                representative_id: p.representative_id ?? p.representativeId ?? p.id,
+                product_ids: ids.length ? ids : [Number(p.id)].filter(n => Number.isFinite(n)),
+            }
+        })
+
+        console.log('[Wishlist.vue] groupedBase normalized:', groupedBase.value)
+    } catch (e) {
+        console.error('[Wishlist.vue] grouped-by-ids ERROR:', e?.response?.data ?? e)
+        groupedBase.value = []
+    } finally {
+        groupedLoading.value = false
+    }
 }
 
 function openQuickView(prenda) {
-    console.log('[Wishlist] openQuickView prenda:', prenda)
     quickProduct.value = prenda
     quickViewOpen.value = true
 }
@@ -280,22 +392,6 @@ async function confirmRemove() {
     pendingRemove.value = null
 }
 
-function formatPrice(value) {
-    const n = Number(value ?? 0)
-    return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(n)
-}
-
-function productImage(p) {
-    const img = p?.images?.[0]
-    const url = img?.url || img?.image_url || img?.path || null
-    return url || fallbackImage(p)
-}
-
-function fallbackImage(p) {
-    const id = p?.representative_id ?? p?.id ?? 'x'
-    return `https://picsum.photos/seed/tiendamoda-${id}-a/800/700`
-}
-
 function askClear() {
     confirmClearOpen.value = true
 }
@@ -304,43 +400,63 @@ function cancelClear() {
     confirmClearOpen.value = false
 }
 
+async function onClear() {
+    await wishlist.clear()
+    groupedBase.value = []
+}
+
 async function confirmClear() {
     await onClear()
     confirmClearOpen.value = false
 }
+
 
 function onAddToCart(payload) {
     cart.addToCart(payload)
     snackbar.value.text = `Añadido: ${payload.product?.name} (x${payload.qty})`
     snackbar.value.open = true
 }
+
+function onWishlistClick(payload) {
+    const prenda = payload?.product
+    if (!prenda) return
+
+    // Si NO está en wishlist -> añadir directo (sin confirmación)
+    if (!payload.inWishlist) {
+        wishlist.toggleGroup(payload.product_ids, payload.representative_id)
+        return
+    }
+
+    // Si YA está en wishlist -> pedir confirmación
+    pendingRemove.value = prenda
+    confirmOpen.value = true
+}
+
 </script>
 
+
 <style scoped>
-.cursor-pointer {
-    cursor: pointer;
+/* Entrada / salida */
+.fade-move-enter-active,
+.fade-move-leave-active {
+  transition: opacity 220ms ease, transform 220ms ease;
+  will-change: opacity, transform;
 }
 
-.img-wrap {
-    position: relative;
+/* Recolocación del resto (cuando desaparece una card) */
+.fade-move-move {
+  transition: transform 220ms ease;
+  will-change: transform;
 }
 
-.product-img {
-    cursor: pointer;
+.fade-move-enter-from {
+  opacity: 0;
+  transform: translateY(10px) scale(0.985);
 }
 
-.pagination-wrap {
-    width: 100%;
-    display: flex;
-    justify-content: center;
-    margin-top: 24px;
+.fade-move-leave-to {
+  opacity: 0;
+  transform: scale(0.96);
 }
 
-.pagination-wrap :deep(.v-pagination) {
-    min-width: 340px;
-}
-
-.pagination-wrap :deep(.v-pagination__list) {
-    flex-wrap: nowrap;
-}
 </style>

@@ -11,7 +11,8 @@
 
             <div class="d-flex ga-2 align-center">
                 <v-chip variant="tonal" rounded="lg">
-                    {{ filteredOrders.length }} pedido(s)
+                    <template v-if="loading">Cargando…</template>
+                    <template v-else>{{ filteredOrders.length }} pedido(s)</template>
                 </v-chip>
 
                 <v-btn color="primary" class="text-none" prepend-icon="mdi-storefront-outline" @click="goShop">
@@ -27,12 +28,12 @@
                     <v-chip v-for="opt in statusOptions" :key="opt.value"
                         :color="statusFilter === opt.value ? 'primary' : undefined"
                         :variant="statusFilter === opt.value ? 'flat' : 'tonal'" rounded="lg" class="text-none"
-                        @click="statusFilter = opt.value">
+                        @click="statusFilter = opt.value" :disabled="loading">
                         {{ opt.label }}
                     </v-chip>
                 </div>
 
-                <v-btn variant="text" class="text-none" prepend-icon="mdi-refresh" @click="reload">
+                <v-btn variant="text" class="text-none" prepend-icon="mdi-refresh" @click="reload" :disabled="loading">
                     Recargar
                 </v-btn>
             </div>
@@ -40,7 +41,35 @@
 
         <!-- Empty state -->
         <v-fade-transition mode="out-in">
-            <div v-if="filteredOrders.length === 0">
+            <!-- LOADING -->
+            <div v-if="loading" key="loading">
+                <v-card rounded="xl" class="pa-6 premium-surface">
+                    <div class="d-flex align-center justify-space-between mb-4">
+                        <div class="text-subtitle-1 font-weight-bold">Cargando pedidos…</div>
+                        <v-progress-circular indeterminate size="22" />
+                    </div>
+
+                    <div class="d-flex flex-column ga-3">
+                        <v-skeleton-loader type="article" />
+                        <v-skeleton-loader type="article" />
+                        <v-skeleton-loader type="article" />
+                    </div>
+                </v-card>
+            </div>
+
+            <!-- ERROR -->
+            <div v-else-if="loadError" key="error">
+                <v-alert type="error" variant="tonal" rounded="lg" class="mb-4">
+                    {{ loadError }}
+                </v-alert>
+
+                <v-btn color="primary" class="text-none" prepend-icon="mdi-refresh" @click="reload">
+                    Reintentar
+                </v-btn>
+            </div>
+
+            <!-- EMPTY -->
+            <div v-else-if="filteredOrders.length === 0" key="empty">
                 <v-card rounded="xl" class="pa-10 text-center premium-surface">
                     <v-icon icon="mdi-receipt-text-outline" size="56" class="mb-3" />
 
@@ -194,7 +223,7 @@
                         <div class="d-flex justify-space-between mb-2">
                             <div class="text-body-2 text-medium-emphasis">Subtotal</div>
                             <div class="text-body-2 font-weight-medium">{{ money(selected.subtotal, selected.currency)
-                                }}</div>
+                            }}</div>
                         </div>
 
                         <div v-if="selected.discountTotal > 0" class="d-flex justify-space-between mb-2">

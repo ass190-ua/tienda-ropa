@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Models\AttributeValue;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class ProductController extends Controller
 {
@@ -289,6 +290,135 @@ class ProductController extends Controller
         return response()->json($products);
     }
 
+    public function variantsByIds(Request $request)
+    {
+        $data = $request->validate([
+            'product_ids' => ['required', 'array', 'min:1'],
+            'product_ids.*' => ['integer', 'exists:products,id'],
+        ]);
+
+        $ids = array_values(array_unique(array_map('intval', $data['product_ids'])));
+
+        // 1) Variantes
+        $products = Product::query()
+            ->with(['images', 'size:id,value', 'color:id,value'])
+            ->whereIn('id', $ids)
+            ->get();
+
+        // 2) Stock real en lote
+        $stockByProduct = DB::table('stock_items')
+            ->select('product_id', DB::raw('COALESCE(SUM(quantity),0) as stock_total'))
+            ->whereIn('product_id', $ids)
+            ->groupBy('product_id')
+            ->pluck('stock_total', 'product_id'); // [product_id => stock_total]
+
+        return response()->json(
+            $products->map(function ($p) use ($stockByProduct) {
+                $images = $p->images
+                    ? $p->images->sortBy('sort_order')->map(fn($img) => Storage::url($img->path))->values()
+                    : collect();
+
+                $stockTotal = (int) ($stockByProduct[$p->id] ?? 0);
+
+                return [
+                    'id' => $p->id,
+                    'name' => $p->name,
+                    'price' => (float) $p->price,
+                    'images' => $images,
+
+                    'size_id' => $p->size_id,
+                    'size' => $p->size?->value,
+
+                    'color_id' => $p->color_id,
+                    'color' => $p->color?->value,
+
+
+                    'stock_total' => $stockTotal,
+                    'available' => $stockTotal,
+                ];
+            })->values()
+        );
+    }
+
+    public function novedadesGroupedProducts(Request $request)
+    {
+        $validated = $request->validate([
+            'category_id' => ['required', 'integer'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+
+        $limit = $validated['limit'] ?? 8;
+
+        // Para asegurar variedad, sacamos más candidatos y luego intercalamos por type_id
+        $candidateLimit = min($limit * 5, 200);
+
+        // 1) Sacamos "prendas" agrupadas: mismo name + category + type
+        $groups = Product::query()
+            ->where('category_id', (int) $validated['category_id'])
+            ->select('name', 'category_id', 'type_id')
+            ->selectRaw('MIN(id) as representative_id, MIN(price) as price, MAX(created_at) as newest_created_at')
+            ->groupBy('name', 'category_id', 'type_id')
+            ->orderByDesc('newest_created_at')
+            ->limit($candidateLimit) // ✅ antes era $limit
+            ->get();
+
+        // Intercalamos los grupos por type_id para mayor variedad
+        $byType = $groups->groupBy('type_id')->map(fn($items) => $items->values());
+        $interleaved = collect();
+
+        while ($interleaved->count() < $limit && $byType->isNotEmpty()) {
+            foreach ($byType->keys() as $typeId) {
+                if ($interleaved->count() >= $limit) break;
+
+                $bucket = $byType->get($typeId);
+                if ($bucket && $bucket->isNotEmpty()) {
+                    $interleaved->push($bucket->shift());
+                    $byType->put($typeId, $bucket);
+                }
+
+                if (!$byType->has($typeId) || $byType->get($typeId)->isEmpty()) {
+                    $byType->forget($typeId);
+                }
+            }
+        }
+
+        $groups = $interleaved;
+
+        // 2) Enriquecemos cada grupo con sus variantes (ids, colores, tallas) y la imagen del representative
+        $result = $groups->map(function ($g) {
+            $variants = Product::query()
+                ->where('name', $g->name)
+                ->where('category_id', $g->category_id)
+                ->where('type_id', $g->type_id)
+                ->with(['images'])
+                ->get();
+
+            $representative = $variants->firstWhere('id', $g->representative_id) ?? $variants->first();
+
+            return [
+                // Para mantener compatibilidad con el front: id = representative
+                'id' => $representative?->id ?? $g->representative_id,
+                'representative_id' => $representative?->id ?? $g->representative_id,
+
+                'name' => $g->name,
+                'category_id' => $g->category_id,
+                'type_id' => $g->type_id,
+                'price' => (float) $g->price,
+
+                // Variantes agrupadas
+                'product_ids' => $variants->pluck('id')->values(),
+                'colors' => $variants->pluck('color')->filter()->unique()->values(),
+                'sizes' => $variants->pluck('size')->filter()->unique()->values(),
+
+                // Imágenes: usamos las del representative
+                'images' => $representative?->images ?? [],
+            ];
+        });
+
+        return response()->json($result);
+    }
+
+
     /**
      * GET /api/products/filters
      * Devuelve filtros *válidos* según category/types actuales
@@ -454,5 +584,77 @@ class ProductController extends Controller
             ->values();
 
         return response()->json($products);
+    }
+
+    public function availability(int $id)
+    {
+        Product::query()->whereKey($id)->firstOrFail();
+
+        $stockTotal = (int) DB::table('stock_items')
+            ->where('product_id', $id)
+            ->sum('quantity');
+
+        return response()->json([
+            'product_id' => $id,
+            'stock_total' => $stockTotal,
+            'available' => $stockTotal,
+        ]);
+    }
+
+    public function resolveVariant(Request $request)
+    {
+        $data = $request->validate([
+            'product_ids'   => ['required', 'array', 'min:1'],
+            'product_ids.*' => ['integer'],
+            'size_id'       => ['nullable', 'integer'],
+            'color_id'      => ['nullable', 'integer'],
+        ]);
+
+        $ids = array_values(array_unique(array_filter(
+            array_map('intval', $data['product_ids']),
+            fn($n) => $n > 0
+        )));
+
+        if (empty($ids)) {
+            return response()->json(['message' => 'product_ids vacío.'], 422);
+        }
+
+        $q = Product::query()
+            ->with(['images', 'size:id,value', 'color:id,value'])
+            ->whereIn('id', $ids);
+
+        if (!empty($data['size_id'])) {
+            $q->where('size_id', (int) $data['size_id']);
+        }
+
+        if (!empty($data['color_id'])) {
+            $q->where('color_id', (int) $data['color_id']);
+        }
+
+        $product = $q->orderBy('id')->first();
+
+        if (!$product) {
+            return response()->json([
+                'message' => 'No existe variante para esa combinación.',
+            ], 404);
+        }
+
+        $images = $product->images
+            ? $product->images->sortBy('sort_order')->map(fn($img) => Storage::url($img->path))->values()
+            : collect();
+
+        return response()->json([
+            'product_id' => $product->id,
+            'product' => [
+                'id' => $product->id,
+                'name' => $product->name,
+                'price' => (float) $product->price,
+                'images' => $images,
+                'size_id' => $product->size_id,
+                'size' => $product->size?->value,
+                'color_id' => $product->color_id,
+                'color' => $product->color?->value,
+            ],
+        ]);
     }
 }

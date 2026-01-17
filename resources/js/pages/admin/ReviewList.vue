@@ -209,13 +209,33 @@ const confirmDelete = async () => {
   }
 };
 
-// Helper para imagen
+// Helper Inteligente para imagen
 const getProductImage = (product) => {
-  // Ajusta esto según cómo guardes tus imágenes
-  if (product.image) return `/storage/${product.image}`;
-  // Si usas una relación de imágenes:
-  // if (product.images && product.images.length > 0) return `/storage/${product.images[0].path}`;
-  return '/placeholder-image.jpg'; // Imagen por defecto
+  if (!product) return '/placeholder-image.jpg';
+
+  // Intenta sacar la ruta de varias formas posibles
+  let path = null;
+  // 1. Si viene como array de objetos (lo más probable ahora)
+  if (product.images && product.images.length > 0) {
+      path = product.images[0].path;
+  }
+  // 2. Si viene como propiedad directa
+  else if (product.image) {
+      path = product.image;
+  }
+  // 3. Si viene como image_url
+  else if (product.image_url) {
+      path = product.image_url;
+  }
+
+  if (!path) return '/placeholder-image.jpg';
+
+  // Limpieza final de la ruta
+  if (path.startsWith('http')) return path;
+  if (path.includes('images/')) return path.startsWith('/') ? path : `/${path}`;
+  if (path.startsWith('/storage')) return path;
+
+  return `/storage/${path}`;
 };
 
 onMounted(() => {

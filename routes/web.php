@@ -18,6 +18,10 @@ Route::get('/{any?}', function () {
     return view('app');
 })->where('any', '^(?!api(/|$)).*');
 
+Route::get('/{any}', function () {
+    return view('welcome'); // O 'app', depende de cómo se llame tu vista principal en resources/views
+})->where('any', '.*');
+
 
 Route::get('/checkout/callback', function (Request $request) {
     return response()->json([

@@ -11,7 +11,8 @@
                     </div>
                 </div>
 
-                <v-btn icon variant="text" aria-label="Cerrar" @click="emit('update:modelValue', false)">
+                <v-btn icon variant="text" aria-label="Cerrar" @click="emit('update:modelValue', false)"
+                    :disabled="cart.syncing">
                     <v-icon icon="mdi-close" />
                 </v-btn>
             </div>
@@ -34,7 +35,10 @@
                     <div v-else key="items" :class="['items-wrap', { clearing: isClearing }]">
                         <TransitionGroup name="cart" tag="div" class="items-list">
                             <div v-for="it in items" :key="it.key" class="item-row">
-                                <v-card rounded="xl" elevation="0" class="item-card">
+                                <v-card rounded="xl" elevation="0" class="item-card" :class="{
+                                    'item-out': av(it).state === 'OUT',
+                                    'item-low': av(it).state === 'LOW',
+                                }">
                                     <div class="d-flex ga-3">
                                         <v-img :src="itemImage(it)" width="74" height="74" cover class="thumb" />
 
@@ -51,6 +55,19 @@
                                                 <span v-if="it.size">Talla: {{ it.size }}</span>
                                                 <span v-if="it.size && it.color"> · </span>
                                                 <span v-if="it.color">Color: {{ it.color }}</span>
+
+                                                <div class="mt-2">
+                                                    <v-chip v-if="!av(it).ok" size="x-small" variant="tonal"
+                                                        rounded="lg"
+                                                        :color="av(it).state === 'OUT' ? 'error' : 'warning'">
+                                                        <template v-if="av(it).state === 'OUT'">
+                                                            Agotado
+                                                        </template>
+                                                        <template v-else>
+                                                            Stock insuficiente
+                                                        </template>
+                                                    </v-chip>
+                                                </div>
                                             </div>
 
                                             <div class="d-flex align-center justify-space-between mt-3">
@@ -60,20 +77,23 @@
 
                                                 <div class="d-flex align-center ga-1">
                                                     <v-btn icon variant="outlined" rounded="lg" size="small"
-                                                        class="qty-btn" aria-label="Disminuir" @click="dec(it)">
+                                                        class="qty-btn" aria-label="Disminuir" @click="dec(it)"
+                                                        :disabled="cart.syncing || (it.qty ?? 1) <= 1">
                                                         <v-icon icon="mdi-minus" />
                                                     </v-btn>
 
                                                     <div class="qty-pill">{{ it.qty ?? 1 }}</div>
 
                                                     <v-btn icon variant="outlined" rounded="lg" size="small"
-                                                        class="qty-btn" aria-label="Aumentar" @click="inc(it)">
+                                                        class="qty-btn" aria-label="Aumentar" @click="inc(it)"
+                                                        :disabled="cart.syncing || !canInc(it)">
                                                         <v-icon icon="mdi-plus" />
                                                     </v-btn>
 
                                                     <!-- Papelera roja -->
                                                     <v-btn icon variant="text" size="small" color="error"
-                                                        class="trash-btn" aria-label="Eliminar" @click="remove(it)">
+                                                        class="trash-btn" aria-label="Eliminar" @click="remove(it)"
+                                                        :disabled="cart.syncing">
                                                         <v-icon icon="mdi-trash-can-outline" />
                                                     </v-btn>
                                                 </div>
@@ -125,7 +145,7 @@
                                 </v-btn>
 
                                 <v-btn color="error" variant="flat" rounded="lg" class="text-none flex-grow-1"
-                                    @click="clearAllConfirmed">
+                                    @click="clearAllConfirmed" :disabled="cart.syncing">
                                     Vaciar
                                 </v-btn>
                             </div>
@@ -133,19 +153,24 @@
                     </div>
                 </v-expand-transition>
 
-                <!-- Botón “Vaciar carrito” con estilo -->
-                <v-btn v-if="items.length > 0" :disabled="confirmClear" color="error" variant="tonal" rounded="lg"
-                    class="text-none w-100" @click="confirmClear = true">
+                <!-- Botón “Vaciar carrito” -->
+                <v-btn v-if="items.length > 0" :disabled="confirmClear || cart.syncing" color="error" variant="tonal"
+                    rounded="lg" class="text-none w-100" @click="confirmClear = true">
                     <v-icon icon="mdi-trash-can-outline" class="mr-2" />
                     Vaciar carrito
                 </v-btn>
             </div>
         </div>
+
+        <v-snackbar :model-value="!!cart.stockWarning" @update:model-value="v => { if (!v) cart.clearStockWarning() }"
+            timeout="2500">
+            {{ cart.stockWarning?.message }}
+        </v-snackbar>
     </v-navigation-drawer>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDisplay } from 'vuetify'
 import { useCartStore } from '../stores/cart'
@@ -174,16 +199,6 @@ const items = computed(() => cart.items)
 const totalItems = computed(() => cart.totalItems)
 
 const subtotal = computed(() => cart.subtotal)
-
-watch(
-    () => props.modelValue,
-    (open) => {
-        if (!open) {
-            confirmClear.value = false
-            isClearing.value = false
-        }
-    }
-)
 
 function money(n) {
     const v = Number(n || 0)
@@ -219,16 +234,36 @@ function itemImage(it) {
     )
 }
 
-function inc(it) {
-    cart.inc(it.key)
+function lineStatus(it) {
+    const pid = Number(it.product?.id ?? it.product_id ?? it.productId ?? 0)
+    const qty = Number(it.qty ?? it.quantity ?? 0)
+    return cart.lineAvailabilityStatus({ product_id: pid, qty })
 }
 
-function dec(it) {
-    cart.dec(it.key)
+function canInc(it) {
+    const st = lineStatus(it)
+    if (!st) return true
+
+    if (st.state === 'OUT') return false
+
+    const available = Number(st.available)
+    const qty = Number(it?.qty ?? 0)
+
+    if (!Number.isFinite(available)) return true
+
+    return qty < available
 }
 
-function remove(it) {
-    cart.removeItem(it.key)
+async function inc(it) {
+    await cart.inc(it.key)
+}
+
+async function dec(it) {
+    await cart.dec(it.key)
+}
+
+async function remove(it) {
+    await cart.removeItem(it.key)
 }
 
 function goToCart() {
@@ -236,20 +271,50 @@ function goToCart() {
     router.push('/cart')
 }
 
-function clearCart() {
-    cart.clear()
+async function clearCart() {
+    await cart.clear()
 }
 
 async function clearAllConfirmed() {
     // animación de “vaciar todo”
     isClearing.value = true
     await new Promise((r) => setTimeout(r, 180))
-    clearCart()
+    await clearCart()
     confirmClear.value = false
     await new Promise((r) => setTimeout(r, 50))
     isClearing.value = false
 }
+
+function av(it) {
+    return cart.lineAvailabilityStatus(it)
+}
+
+watch(
+    () => props.modelValue,
+    async (open) => {
+        if (open) {
+            confirmClear.value = false
+            isClearing.value = false
+
+            try {
+                await cart.pullFromBackend?.(true)
+            } catch { }
+
+            try {
+                await cart.refreshAvailabilityForCart?.()
+            } catch { }
+        } else {
+            confirmClear.value = false
+            isClearing.value = false
+        }
+    }
+)
+
+watch(() => cart.items, async () => {
+    await cart.refreshAvailabilityForCart()
+}, { deep: true })
 </script>
+
 
 <style scoped>
 .cart-drawer {
@@ -316,6 +381,16 @@ async function clearAllConfirmed() {
     border-radius: 18px;
     padding: 12px;
     background: rgba(0, 0, 0, 0.012);
+}
+
+.item-out {
+    border: 1px solid rgba(244, 67, 54, 0.30) !important;
+    background: rgba(244, 67, 54, 0.04) !important;
+}
+
+.item-low {
+    border: 1px solid rgba(255, 152, 0, 0.30) !important;
+    background: rgba(255, 152, 0, 0.04) !important;
 }
 
 .thumb {

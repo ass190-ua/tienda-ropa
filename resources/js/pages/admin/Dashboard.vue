@@ -10,9 +10,9 @@
       </p>
     </div>
 
-    <v-row>
+    <v-row justify="center">
 
-      <v-col cols="12" sm="6" lg="3">
+      <v-col cols="12" sm="6" lg="4">
         <v-hover v-slot="{ isHovering, props }">
           <v-card
             v-bind="props"
@@ -21,25 +21,22 @@
             color="success"
             theme="dark"
             to="/admin/orders"
-            ><div class="d-flex flex-column fill-height">
+          >
+            <div class="d-flex flex-column fill-height">
               <div class="d-flex justify-space-between pa-4">
                 <div>
                   <div class="text-h4 font-weight-bold">{{ stats.orders_count || 0 }}</div>
                   <div class="text-subtitle-1 opacity-80 mt-1">Pedidos</div>
-
                   <div class="mt-2 pt-2 border-t-opacity-20 d-flex align-center text-green-lighten-4">
                      <v-icon size="small" class="mr-1">mdi-cash-multiple</v-icon>
                      <span class="text-h6 font-weight-bold">
                         {{ parseFloat(stats.revenue || 0).toFixed(2) }}€
                      </span>
                   </div>
-
                 </div>
                 <v-icon size="48" class="opacity-50">mdi-cart-outline</v-icon>
               </div>
-
               <v-spacer></v-spacer>
-
               <v-divider class="opacity-20"></v-divider>
               <div class="pa-3 bg-green-darken-2 d-flex align-center">
                 <span class="text-caption font-weight-bold">Gestionar Pedidos</span>
@@ -51,7 +48,7 @@
         </v-hover>
       </v-col>
 
-      <v-col cols="12" sm="6" lg="3">
+      <v-col cols="12" sm="6" lg="4">
         <v-hover v-slot="{ isHovering, props }">
           <v-card
             v-bind="props"
@@ -69,9 +66,7 @@
                 </div>
                 <v-icon size="48" class="opacity-50">mdi-tshirt-crew-outline</v-icon>
               </div>
-
               <v-spacer></v-spacer>
-
               <v-divider class="opacity-20"></v-divider>
               <div class="pa-3 bg-orange-darken-2 d-flex align-center">
                 <span class="text-caption font-weight-bold">Ver Catálogo</span>
@@ -83,7 +78,7 @@
         </v-hover>
       </v-col>
 
-      <v-col cols="12" sm="6" lg="3">
+      <v-col cols="12" sm="6" lg="4">
         <v-hover v-slot="{ isHovering, props }">
           <v-card
             v-bind="props"
@@ -101,9 +96,7 @@
                 </div>
                 <v-icon size="48" class="opacity-50">mdi-account-group-outline</v-icon>
               </div>
-
               <v-spacer></v-spacer>
-
               <v-divider class="opacity-20"></v-divider>
               <div class="pa-3 bg-blue-darken-2 d-flex align-center">
                 <span class="text-caption font-weight-bold">Administrar Usuarios</span>
@@ -115,7 +108,7 @@
         </v-hover>
       </v-col>
 
-      <v-col cols="12" sm="6" lg="3">
+      <v-col cols="12" sm="6" lg="4">
         <v-hover v-slot="{ isHovering, props }">
           <v-card
             v-bind="props"
@@ -133,12 +126,40 @@
                 </div>
                 <v-icon size="48" class="opacity-50">mdi-comment-text-multiple-outline</v-icon>
               </div>
-
               <v-spacer></v-spacer>
-
               <v-divider class="opacity-20"></v-divider>
               <div class="pa-3 bg-purple-darken-2 d-flex align-center">
                 <span class="text-caption font-weight-bold">Moderar Reseñas</span>
+                <v-spacer></v-spacer>
+                <v-icon size="small">mdi-arrow-right</v-icon>
+              </div>
+            </div>
+          </v-card>
+        </v-hover>
+      </v-col>
+
+      <v-col cols="12" sm="6" lg="4">
+        <v-hover v-slot="{ isHovering, props }">
+          <v-card
+            v-bind="props"
+            :elevation="isHovering ? 8 : 2"
+            class="cursor-pointer transition-swing rounded-lg h-100"
+            color="pink-darken-1"
+            theme="dark"
+            to="/admin/coupons"
+          >
+            <div class="d-flex flex-column fill-height">
+              <div class="d-flex justify-space-between pa-4">
+                <div>
+                  <div class="text-h4 font-weight-bold">{{ stats.coupons_count || 0 }}</div>
+                  <div class="text-subtitle-1 opacity-80 mt-1">Cupones</div>
+                </div>
+                <v-icon size="48" class="opacity-50">mdi-ticket-percent-outline</v-icon>
+              </div>
+              <v-spacer></v-spacer>
+              <v-divider class="opacity-20"></v-divider>
+              <div class="pa-3 bg-pink-darken-2 d-flex align-center">
+                <span class="text-caption font-weight-bold">Gestionar Descuentos</span>
                 <v-spacer></v-spacer>
                 <v-icon size="small">mdi-arrow-right</v-icon>
               </div>
