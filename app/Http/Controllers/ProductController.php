@@ -117,6 +117,20 @@ class ProductController extends Controller
         return response()->json($products);
     }
 
+    public function homeGroupedProducts(Request $request)
+    {
+        $data = $request->validate([
+            'category_id' => ['nullable', 'integer'],
+            'limit'       => ['nullable', 'integer', 'min:1', 'max:24'],
+        ]);
+
+        $limit = (int)($data['limit'] ?? 12);
+        $categoryId = !empty($data['category_id']) ? (int)$data['category_id'] : null;
+
+        $res = $this->buildGroupedNewestProductsQuery($categoryId, $limit);
+
+        return response()->json($res);
+    }
 
     /**
      * Muestra el detalle de UN solo producto (Para /shop/{id})
@@ -538,6 +552,15 @@ class ProductController extends Controller
         $name = trim($name);
         if ($name === '') return [];
 
+        if (mb_strtolower($name) === 'zapatos') {
+            $shoeCats = ['Zapatos Mujer', 'Zapatos Hombre', 'Zapatos Niño', 'Zapatos Niña'];
+
+            return AttributeValue::whereHas('attribute', fn($q) => $q->where('code', 'category'))
+                ->whereIn('value', $shoeCats)
+                ->pluck('id')
+                ->all();
+        }
+
         $dept = ['Hombre', 'Mujer', 'Niño', 'Niña'];
         $names = in_array($name, $dept, true) ? [$name, "Zapatos {$name}"] : [$name];
 
@@ -550,40 +573,95 @@ class ProductController extends Controller
 
     public function topPurchased()
     {
-        $topIds = DB::table('order_lines')
-            ->select('product_id', DB::raw('SUM(quantity) as total_qty'))
-            ->groupBy('product_id')
+        // ✅ Devolvemos "prendas" agrupadas (name + category_id + type_id) para evitar duplicados
+        // y para que la Vista Rápida pueda elegir talla/color con product_ids.
+        $groups = DB::table('order_lines as ol')
+            ->join('products as p', 'p.id', '=', 'ol.product_id')
+            ->select(
+                'p.name',
+                'p.category_id',
+                'p.type_id',
+                DB::raw('SUM(ol.quantity) as total_qty'),
+                DB::raw('MIN(p.id) as representative_id'),
+                DB::raw('MIN(p.price) as price')
+            )
+            ->groupBy('p.name', 'p.category_id', 'p.type_id')
             ->orderByDesc('total_qty')
             ->limit(10)
-            ->pluck('product_id')
-            ->toArray();
+            ->get();
 
-        $products = Product::with('images')
-            ->whereIn('id', $topIds)
-            ->get()
-            ->sortBy(fn($p) => array_search($p->id, $topIds))
-            ->values();
+        $result = $groups->map(function ($g) {
+            $variants = Product::query()
+                ->where('name', $g->name)
+                ->where('category_id', (int) $g->category_id)
+                ->where('type_id', (int) $g->type_id)
+                ->with(['images', 'color:id,value', 'size:id,value'])
+                ->orderBy('id')
+                ->get();
 
-        return response()->json($products);
+            $representative = $variants->firstWhere('id', (int) $g->representative_id) ?? $variants->first();
+
+            return [
+                'id' => $representative?->id ?? (int) $g->representative_id,
+                'representative_id' => $representative?->id ?? (int) $g->representative_id,
+                'name' => $g->name,
+                'price' => (float) ($g->price ?? ($representative?->price ?? 0)),
+                'category_id' => (int) $g->category_id,
+                'type_id' => (int) $g->type_id,
+                'images' => $representative?->images ?? collect(),
+                'product_ids' => $variants->pluck('id')->values(),
+                'colors' => $variants->pluck('color')->filter()->unique('id')->values(),
+                'sizes' => $variants->pluck('size')->filter()->unique('id')->values(),
+            ];
+        })->values();
+
+        return response()->json($result);
     }
 
     public function topWishlisted()
     {
-        $topIds = DB::table('wishlist_items')
-            ->select('product_id', DB::raw('COUNT(*) as total_saves'))
-            ->groupBy('product_id')
+        // ✅ Igual que topPurchased(): agrupamos por prenda para evitar duplicados.
+        $groups = DB::table('wishlist_items as wi')
+            ->join('products as p', 'p.id', '=', 'wi.product_id')
+            ->select(
+                'p.name',
+                'p.category_id',
+                'p.type_id',
+                DB::raw('COUNT(*) as total_saves'),
+                DB::raw('MIN(p.id) as representative_id'),
+                DB::raw('MIN(p.price) as price')
+            )
+            ->groupBy('p.name', 'p.category_id', 'p.type_id')
             ->orderByDesc('total_saves')
             ->limit(10)
-            ->pluck('product_id')
-            ->toArray();
+            ->get();
 
-        $products = Product::with('images')
-            ->whereIn('id', $topIds)
-            ->get()
-            ->sortBy(fn($p) => array_search($p->id, $topIds))
-            ->values();
+        $result = $groups->map(function ($g) {
+            $variants = Product::query()
+                ->where('name', $g->name)
+                ->where('category_id', (int) $g->category_id)
+                ->where('type_id', (int) $g->type_id)
+                ->with(['images', 'color:id,value', 'size:id,value'])
+                ->orderBy('id')
+                ->get();
 
-        return response()->json($products);
+            $representative = $variants->firstWhere('id', (int) $g->representative_id) ?? $variants->first();
+
+            return [
+                'id' => $representative?->id ?? (int) $g->representative_id,
+                'representative_id' => $representative?->id ?? (int) $g->representative_id,
+                'name' => $g->name,
+                'price' => (float) ($g->price ?? ($representative?->price ?? 0)),
+                'category_id' => (int) $g->category_id,
+                'type_id' => (int) $g->type_id,
+                'images' => $representative?->images ?? collect(),
+                'product_ids' => $variants->pluck('id')->values(),
+                'colors' => $variants->pluck('color')->filter()->unique('id')->values(),
+                'sizes' => $variants->pluck('size')->filter()->unique('id')->values(),
+            ];
+        })->values();
+
+        return response()->json($result);
     }
 
     public function availability(int $id)
@@ -639,8 +717,8 @@ class ProductController extends Controller
             ], 404);
         }
 
-        $images = $product->images
-            ? $product->images->sortBy('sort_order')->map(fn($img) => Storage::url($img->path))->values()
+        $images = $p->images
+            ? $p->images->sortBy('sort_order')->map(fn($img) => '/' . ltrim($img->path, '/'))->values()
             : collect();
 
         return response()->json([
@@ -656,5 +734,79 @@ class ProductController extends Controller
                 'color' => $product->color?->value,
             ],
         ]);
+    }
+
+    private function buildGroupedNewestProductsQuery(?int $categoryId, int $limit): array
+    {
+        $candidateLimit = min($limit * 5, 200);
+
+        $groupsQ = Product::query()
+            ->select('name', 'category_id', 'type_id')
+            ->selectRaw('MIN(id) as representative_id, MIN(price) as price, MAX(created_at) as newest_created_at')
+            ->groupBy('name', 'category_id', 'type_id')
+            ->orderByDesc('newest_created_at')
+            ->limit($candidateLimit);
+
+        if ($categoryId) {
+            $groupsQ->where('category_id', $categoryId);
+        }
+
+        $groups = $groupsQ->get();
+
+        $byType = $groups->groupBy('type_id')->map(fn($items) => $items->values());
+        $interleaved = collect();
+
+        while ($interleaved->count() < $limit && $byType->isNotEmpty()) {
+            foreach ($byType->keys() as $typeId) {
+                if ($interleaved->count() >= $limit) break;
+
+                $bucket = $byType->get($typeId);
+                if ($bucket && $bucket->isNotEmpty()) {
+                    $interleaved->push($bucket->shift());
+                    $byType->put($typeId, $bucket);
+                }
+
+                if (!$byType->has($typeId) || $byType->get($typeId)->isEmpty()) {
+                    $byType->forget($typeId);
+                }
+            }
+        }
+
+        $groups = $interleaved;
+
+        $result = $groups->map(function ($g) {
+            $variants = Product::query()
+                ->where('name', $g->name)
+                ->where('category_id', $g->category_id)
+                ->where('type_id', $g->type_id)
+                ->with([
+                    'images',
+                    'color:id,value',
+                    'size:id,value',
+                ])
+                ->orderBy('id')
+                ->get();
+
+            $representative = $variants->firstWhere('id', (int)$g->representative_id) ?? $variants->first();
+
+            return [
+                'id' => $representative?->id ?? (int)$g->representative_id,
+                'representative_id' => $representative?->id ?? (int)$g->representative_id,
+
+                'name' => $g->name,
+                'category_id' => (int) $g->category_id,
+                'type_id' => (int) $g->type_id,
+                'price' => (float) $g->price,
+
+                'product_ids' => $variants->pluck('id')->values(),
+
+                'colors' => $variants->pluck('color')->filter()->unique('id')->values(),
+                'sizes'  => $variants->pluck('size')->filter()->unique('id')->values(),
+
+                'images' => $representative?->images ?? [],
+            ];
+        })->values();
+
+        return $result->all();
     }
 }

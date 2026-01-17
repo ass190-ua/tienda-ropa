@@ -5,8 +5,6 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Subscriber;
 use App\Models\Coupon;
-use Illuminate\Support\Facades\Mail;
-use App\Mail\WelcomeNewsletter;
 use Illuminate\Support\Facades\Http;
 use App\Http\Controllers\Controller;
 
@@ -28,24 +26,30 @@ class NewsletterController extends Controller
             [
                 'discount_type' => 'percent',
                 'discount_value' => 10,
-                'is_active' => true
+                'is_active' => true,
+                'min_order_total' => 0
             ]
         );
 
-        // 3. Enviamos el correo con API Directa
+        // 3. Intentamos renderizar y enviar
         try {
             $apiKey = config('services.brevo.key') ?? env('BREVO_KEY');
 
-            // --- AQUÍ ESTÁ LA MAGIA ---
-            // Usamos view(...)->render() para convertir el archivo blade en texto HTML
+            // INTENTO 1: Renderizar la vista
+            if (!view()->exists('emails.welcome')) {
+                return response()->json([
+                    'message' => 'ERROR: No encuentro el archivo resources/views/emails/welcome.blade.php'
+                ], 500);
+            }
+
             $htmlContent = view('emails.welcome', [
                 'couponCode' => $coupon->code,
                 'discount'   => $coupon->discount_value,
                 'minTotal'   => $coupon->min_order_total ?? 0
             ])->render();
-            // --------------------------
 
-            Http::withHeaders([
+            // INTENTO 2: Enviar a Brevo vía API
+            $response = Http::withHeaders([
                 'api-key' => $apiKey,
                 'Content-Type' => 'application/json',
                 'Accept' => 'application/json',
@@ -53,13 +57,25 @@ class NewsletterController extends Controller
                 'sender' => ['name' => 'Be Urban', 'email' => 'tiendamoda.ua@gmail.com'],
                 'to' => [['email' => $request->email]],
                 'subject' => '¡Bienvenido a Be Urban! Tu regalo dentro 🎁',
-                'htmlContent' => $htmlContent // Le pasamos el HTML bonito generado arriba
+                'htmlContent' => $htmlContent
             ]);
 
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Error Brevo Newsletter: ' . $e->getMessage());
-        }
+            // Verificamos respuesta de Brevo
+            if ($response->successful()) {
+                return response()->json(['message' => '¡Suscripción exitosa! Revisa tu correo.']);
+            } else {
+                return response()->json([
+                    'message' => 'Error de Brevo',
+                    'error_details' => $response->body()
+                ], 500);
+            }
 
-        return response()->json(['message' => '¡Suscripción exitosa! Revisa tu correo.']);
+        } catch (\Exception $e) {
+            // Error técnico del servidor
+            return response()->json([
+                'message' => 'Error Interno del Servidor',
+                'technical_error' => $e->getMessage()
+            ], 500);
+        }
     }
 }

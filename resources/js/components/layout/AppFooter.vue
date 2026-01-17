@@ -5,7 +5,7 @@
                 <v-col cols="12" md="4" lg="3">
                     <div class="d-flex align-center mb-3">
                         <v-icon icon="mdi-feather" color="primary" size="28" class="mr-2" />
-                        <span class="text-h6 font-weight-bold">TiendaModa</span>
+                        <span class="text-h6 font-weight-bold">BeUrban</span>
                     </div>
                     <p class="text-medium-emphasis text-body-2 mb-3" style="line-height: 1.6; max-width: 300px;">
                         Diseño contemporáneo para la vida moderna. Calidad y estilo en cada detalle.
@@ -26,9 +26,9 @@
                 <v-col cols="6" md="2" lg="2" offset-lg="1">
                     <h4 class="text-subtitle-1 font-weight-bold mb-3">Explorar</h4>
                     <div class="d-flex flex-column gap-1">
-                        <router-link to="/shop" class="footer-link">Novedades</router-link>
-                        <router-link to="/shop" class="footer-link">Mujer</router-link>
-                        <router-link to="/shop" class="footer-link">Hombre</router-link>
+                        <router-link to="/novedades" class="footer-link">Novedades</router-link>
+                        <router-link to="/shop?category=Mujer" class="footer-link">Mujer</router-link>
+                        <router-link to="/shop?category=Hombre" class="footer-link">Hombre</router-link>
                         <router-link to="/shop" class="footer-link">Colecciones</router-link>
                     </div>
                 </v-col>

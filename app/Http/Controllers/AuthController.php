@@ -3,6 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\Order;
+use App\Models\OrderLine;
+use App\Models\Payment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
@@ -11,6 +14,7 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Auth\Events\Registered;
+use Illuminate\Support\Facades\DB;
 use Laravel\Socialite\Facades\Socialite;
 
 class AuthController extends Controller
@@ -146,11 +150,68 @@ class AuthController extends Controller
             request()->session()->regenerate();
 
             return redirect('/');
-
         } catch (\Exception $e) {
             // Puedes dejar el dd($e) un momento más si quieres asegurar,
             // pero si todo va bien, deberías redirigir al login:
             return redirect('/login?error=google_failed');
         }
+    }
+
+    public function updateProfile(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+        ]);
+
+        $user = $request->user();
+        $user->update($data);
+
+        return response()->json($user->fresh());
+    }
+
+    public function destroyMe(Request $request)
+    {
+        $user = $request->user();
+
+        DB::transaction(function () use ($user) {
+
+            // 1) Pedidos del usuario
+            $orderIds = Order::where('user_id', $user->id)->pluck('id');
+
+            // 2) Borrar pagos y líneas de pedido (por si no hay cascade)
+            if ($orderIds->isNotEmpty()) {
+                Payment::whereIn('order_id', $orderIds)->delete();
+                OrderLine::whereIn('order_id', $orderIds)->delete();
+                Order::whereIn('id', $orderIds)->delete();
+            }
+
+            // 3) Ahora ya se pueden borrar direcciones (si no, restrict en orders.address_id te rompería)
+            $user->addresses()->delete();
+
+            // 4) Wishlist y sus items
+            if ($user->wishlist) {
+                $user->wishlist->items()->delete();
+                $user->wishlist->delete();
+            }
+
+            // 5) Cart y sus items
+            if ($user->cart) {
+                $user->cart->items()->delete();
+                $user->cart->delete();
+            }
+
+            // 6) Reviews
+            $user->reviews()->delete();
+
+            // 7) Usuario
+            $user->delete();
+        });
+
+        // Logout / limpiar sesión (SPA sanctum)
+        Auth::logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return response()->json(['ok' => true]);
     }
 }

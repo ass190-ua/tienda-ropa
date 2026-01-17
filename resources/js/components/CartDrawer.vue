@@ -40,7 +40,9 @@
                                     'item-low': av(it).state === 'LOW',
                                 }">
                                     <div class="d-flex ga-3">
-                                        <v-img :src="itemImage(it)" width="74" height="74" cover class="thumb" />
+                                        <v-img :src="itemImage(it)" width="74" height="74" cover
+                                            class="thumb thumb-click" role="link" tabindex="0" @click="goToProduct(it)"
+                                            @keydown.enter.prevent="goToProduct(it)" />
 
                                         <div class="flex-grow-1">
                                             <div class="text-body-2 text-medium-emphasis">
@@ -225,13 +227,18 @@ function itemImage(it) {
     const p = it.product ?? it
     const imgs = Array.isArray(p?.images) ? p.images : []
     const first = imgs[0]
-    if (typeof first === 'string') return first
-    return (
-        first?.url ??
-        first?.path ??
-        first?.src ??
-        p?.image ?? p?.image_url ?? it.image ?? ''
-    )
+
+    let url =
+        (typeof first === 'string') ? first :
+            (first?.url ?? first?.path ?? first?.src ?? p?.image ?? p?.image_url ?? it.image ?? '')
+
+    if (!url) return ''
+
+    if (/^https?:\/\//i.test(url)) return url
+
+    if (url.startsWith('/')) return url
+
+    return '/' + url
 }
 
 function lineStatus(it) {
@@ -289,6 +296,19 @@ function av(it) {
     return cart.lineAvailabilityStatus(it)
 }
 
+function productIdFromItem(it) {
+    return Number(it.product?.id ?? it.product_id ?? it.productId ?? 0)
+}
+
+function goToProduct(it) {
+    const id = productIdFromItem(it)
+    if (!id) return
+
+    emit('update:modelValue', false)
+
+    router.push(`/producto/${id}`)
+}
+
 watch(
     () => props.modelValue,
     async (open) => {
@@ -310,9 +330,18 @@ watch(
     }
 )
 
-watch(() => cart.items, async () => {
-    await cart.refreshAvailabilityForCart()
-}, { deep: true })
+let avTimer = null
+
+watch(
+    () => cart.items.map(i => `${i.product?.id ?? i.product_id}:${i.qty}`).join('|'),
+    () => {
+        if (avTimer) clearTimeout(avTimer)
+        avTimer = setTimeout(async () => {
+            if (cart.syncing) return
+            await cart.refreshAvailabilityForCart()
+        }, 350)
+    }
+)
 </script>
 
 
@@ -397,6 +426,18 @@ watch(() => cart.items, async () => {
     border-radius: 14px;
     overflow: hidden;
     border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.thumb-click {
+    cursor: pointer;
+}
+
+.thumb-click:deep(img) {
+    transition: transform 160ms ease;
+}
+
+.thumb-click:hover:deep(img) {
+    transform: scale(1.04);
 }
 
 .title-clamp {

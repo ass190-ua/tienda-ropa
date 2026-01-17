@@ -157,8 +157,9 @@ class CartController extends Controller
                 $p = $it->product;
 
                 $images = $p?->images
-                    ? $p->images->sortBy('sort_order')->map(fn($img) => Storage::url($img->path))->values()
+                    ? $p->images->sortBy('sort_order')->values()
                     : collect();
+
 
                 return [
                     'id' => $it->id,
@@ -183,5 +184,45 @@ class CartController extends Controller
                 ];
             })->values(),
         ];
+    }
+
+    private function absoluteUrlFromPath(string $path): string
+    {
+        $path = trim($path);
+        if ($path === '') return '';
+
+        // URL absoluta
+        if (preg_match('#^https?://#i', $path)) return $path;
+
+        // URL protocol-relative
+        if (str_starts_with($path, '//')) return 'https:' . $path;
+
+        $base = request()->getSchemeAndHttpHost();
+
+        // Si ya es ruta absoluta del servidor (/storage/..., /img/..., etc.)
+        if (str_starts_with($path, '/')) {
+            return $base . $path;
+        }
+
+        // Si viene como "storage/..." lo convertimos en "/storage/..."
+        if (str_starts_with($path, 'storage/')) {
+            return $base . '/' . $path;
+        }
+
+        // Si viene como path de disco ("products/xxx.jpg"), lo pasamos por Storage::url() => "/storage/..."
+        $public = Storage::url($path); // suele devolver "/storage/..."
+        if (!str_starts_with($public, '/')) $public = '/' . $public;
+
+        return $base . $public;
+    }
+
+    private function imageUrlFromModel($img): string
+    {
+        // Por si algún día guardáis "url" en BD
+        $url = (string)($img->url ?? '');
+        if (trim($url) !== '') return $this->absoluteUrlFromPath($url);
+
+        $path = (string)($img->path ?? '');
+        return $this->absoluteUrlFromPath($path);
     }
 }

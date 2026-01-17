@@ -1,13 +1,13 @@
 <template>
     <v-container class="py-6">
-        <!-- Estado de carga o error -->
+        <!-- Estado de carga / error -->
         <v-alert v-if="loading" type="info" variant="tonal">Cargando productos...</v-alert>
         <v-alert v-else-if="error" type="error" variant="tonal">
             Ha ocurrido un error cargando los destacados.
             <div class="text-caption mt-2">{{ error }}</div>
         </v-alert>
 
-        <div v-else>
+        <template v-else>
             <!-- ===================== -->
             <!--       MÁS COMPRADOS    -->
             <!-- ===================== -->
@@ -29,120 +29,122 @@
                             <v-col cols="12" sm="4" class="d-flex justify-center">
                                 <div v-if="purchasedPodium[1]" class="podium-card podium-2 medal silver">
                                     <div class="podium-badge">2</div>
-                                    <ProductCard :product="purchasedPodium[1]" />
+                                    <ProductCard :product="purchasedPodium[1]" @quick-view="openQuickView" />
+                                </div>
+                            </v-col>
+
+                            <!-- 1º -->
+                            <v-col cols="12" sm="4" class="d-flex justify-center">
+                                <div v-if="purchasedPodium[0]" class="podium-card podium-1 medal gold">
+                                    <div class="podium-badge">1</div>
+                                    <ProductCard :product="purchasedPodium[0]" @quick-view="openQuickView" />
+                                </div>
+                            </v-col>
+
+                            <!-- 3º -->
+                            <v-col cols="12" sm="4" class="d-flex justify-center">
+                                <div v-if="purchasedPodium[2]" class="podium-card podium-3 medal bronze">
+                                    <div class="podium-badge">3</div>
+                                    <ProductCard :product="purchasedPodium[2]" @quick-view="openQuickView" />
+                                </div>
+                            </v-col>
+                        </v-row>
                     </div>
-                    </v-col>
 
-                    <!-- 1º -->
-                    <v-col cols="12" sm="4" class="d-flex justify-center">
-                        <div v-if="purchasedPodium[0]" class="podium-card podium-1 medal gold">
-                            <div class="podium-badge">1</div>
-                            <ProductCard :product="purchasedPodium[0]" />
-                        </div>
-                    </v-col>
-
-                    <!-- 3º -->
-                    <v-col cols="12" sm="4" class="d-flex justify-center">
-                        <div v-if="purchasedPodium[2]" class="podium-card podium-3 medal bronze">
-                            <div class="podium-badge">3</div>
-                            <ProductCard :product="purchasedPodium[2]" />
-                        </div>
-                    </v-col>
-                    </v-row>
+                    <!-- Resto -->
+                    <div class="mt-8">
+                        <v-row class="gy-6 mt-2">
+                            <v-col v-for="(p, idx) in purchasedRest" :key="'purchased-rest-' + p.id" cols="12" sm="6"
+                                md="4" lg="3">
+                                <div class="rank-wrap">
+                                    <div class="rank-badge">{{ idx + 4 }}</div>
+                                    <ProductCard :product="p" class="rank-card" @quick-view="openQuickView" />
+                                </div>
+                            </v-col>
+                        </v-row>
+                    </div>
+                </template>
             </div>
 
-            <!-- Resto (lista) -->
-            <div class="mt-8">
-                <!-- Resto (grid compacto) -->
-                <v-row class="gy-6 mt-2">
-                    <v-col v-for="(p, idx) in purchasedRest" :key="'purchased-rest-' + p.id" cols="12" sm="6" md="4"
-                        lg="3">
-                        <div class="rank-wrap">
-                            <div class="rank-badge">{{ idx + 4 }}</div>
-                            <ProductCard :product="p" class="rank-card" />
-                        </div>
-                    </v-col>
-                </v-row>
+            <!-- ===================== -->
+            <!--  MÁS GUARDADOS WISHLIST -->
+            <!-- ===================== -->
+            <div class="mt-12">
+                <div class="d-flex align-center justify-space-between mb-4">
+                    <h2 class="text-h5 font-weight-bold">Más guardados en wishlist</h2>
+                    <div class="text-medium-emphasis text-caption">Top 10</div>
+                </div>
 
+                <v-alert v-if="topWishlisted.length === 0" type="warning" variant="tonal">
+                    No hay datos de wishlist aún.
+                </v-alert>
+
+                <template v-else>
+                    <!-- Podio -->
+                    <div class="podium">
+                        <v-row class="gy-6" align="end" justify="center">
+                            <!-- 2º -->
+                            <v-col cols="12" sm="4" class="d-flex justify-center">
+                                <div v-if="wishlistedPodium[1]" class="podium-card podium-2 medal silver">
+                                    <div class="podium-badge">2</div>
+                                    <ProductCard :product="wishlistedPodium[1]" @quick-view="openQuickView" />
+                                </div>
+                            </v-col>
+
+                            <!-- 1º -->
+                            <v-col cols="12" sm="4" class="d-flex justify-center">
+                                <div v-if="wishlistedPodium[0]" class="podium-card podium-1 medal gold">
+                                    <div class="podium-badge">1</div>
+                                    <ProductCard :product="wishlistedPodium[0]" @quick-view="openQuickView" />
+                                </div>
+                            </v-col>
+
+                            <!-- 3º -->
+                            <v-col cols="12" sm="4" class="d-flex justify-center">
+                                <div v-if="wishlistedPodium[2]" class="podium-card podium-3 medal bronze">
+                                    <div class="podium-badge">3</div>
+                                    <ProductCard :product="wishlistedPodium[2]" @quick-view="openQuickView" />
+                                </div>
+                            </v-col>
+                        </v-row>
+                    </div>
+
+                    <!-- Resto -->
+                    <div class="mt-8">
+                        <v-row class="gy-6 mt-2">
+                            <v-col v-for="(p, idx) in wishlistedRest" :key="'wishlisted-rest-' + p.id" cols="12" sm="6"
+                                md="4" lg="3">
+                                <div class="rank-wrap">
+                                    <div class="rank-badge">{{ idx + 4 }}</div>
+                                    <ProductCard :product="p" class="rank-card" @quick-view="openQuickView" />
+                                </div>
+                            </v-col>
+                        </v-row>
+                    </div>
+                </template>
             </div>
+
+            <!-- Vista rápida -->
+            <VistaRapidaDialog v-model="quickViewOpen" :product="quickProduct" :colors-palette="colors"
+                @add="onAddToCart" />
+
+            <v-snackbar v-model="snackbar.open" :timeout="2200" rounded="lg" color="success">
+                {{ snackbar.text }}
+            </v-snackbar>
+        </template>
+    </v-container>
 </template>
-</div>
-
-<!-- ===================== -->
-<!--  MÁS GUARDADOS WISHLIST -->
-<!-- ===================== -->
-<div class="mt-12">
-    <div class="d-flex align-center justify-space-between mb-4">
-        <h2 class="text-h5 font-weight-bold">Más guardados en wishlist</h2>
-        <div class="text-medium-emphasis text-caption">Top 10</div>
-    </div>
-
-    <v-alert v-if="topWishlisted.length === 0" type="warning" variant="tonal">
-        No hay datos de wishlist aún.
-    </v-alert>
-
-    <template v-else>
-        <!-- Podio -->
-        <div class="podium">
-            <v-row class="gy-6" align="end" justify="center">
-                <!-- 2º -->
-                <v-col cols="12" sm="4" class="d-flex justify-center">
-                     <<div v-if="purchasedPodium[1]" class="podium-card podium-2 medal silver">
-                        <div class="podium-badge">2</div>
-                        <ProductCard :product="wishlistedPodium[1]" />
-                    </div>
-                </v-col>
-
-                <!-- 1º -->
-                <v-col cols="12" sm="4" class="d-flex justify-center">
-                    <div v-if="purchasedPodium[0]" class="podium-card podium-1 medal gold">
-                        <div class="podium-badge">1</div>
-                        <ProductCard :product="wishlistedPodium[0]" />
-                    </div>
-                </v-col>
-
-                <!-- 3º -->
-                <v-col cols="12" sm="4" class="d-flex justify-center">
-                    <div v-if="wishlistedPodium[2]" class="podium-card podium-3 medal bronze">
-                        <div class="podium-badge">3</div>
-                        <ProductCard :product="wishlistedPodium[2]" />
-                    </div>
-                </v-col>
-            </v-row>
-        </div>
-
-        <!-- Resto (lista) -->
-        <div class="mt-8">
-            <!-- Resto (grid compacto) -->
-            <v-row class="gy-6 mt-2">
-                <v-col v-for="(p, idx) in purchasedRest" :key="'purchased-rest-' + p.id" cols="12" sm="6" md="4" lg="3">
-                    <div class="rank-wrap">
-                        <div class="rank-badge">{{ idx + 4 }}</div>
-                        <ProductCard :product="p" class="rank-card" />
-                    </div>
-                </v-col>
-            </v-row>
-
-        </div>
-    </template>
-</div>
-
-<!-- Snackbar (si tu ProductCard lo usa, puedes quitarlo) -->
-<v-snackbar v-model="snackbar.open" :timeout="2200" rounded="lg">
-    {{ snackbar.text }}
-</v-snackbar>
-</div>
-</v-container>
-</template>
-
 
 <script setup>
 import { onMounted, ref, computed } from 'vue'
 import axios from 'axios'
 import { useWishlistStore } from '@/stores/wishlist'
+import { useCartStore } from '@/stores/cart'
 import ProductCard from '@/components/ProductCard.vue'
+import VistaRapidaDialog from '@/components/VistaRapidaDialog.vue'
 
 const wishlist = useWishlistStore()
+const cart = useCartStore()
 
 const loading = ref(true)
 const error = ref('')
@@ -150,16 +152,45 @@ const error = ref('')
 const topPurchased = ref([])
 const topWishlisted = ref([])
 
-const snackbar = ref({ open: false, text: '' })
-
 const purchasedPodium = computed(() => topPurchased.value.slice(0, 3))
 const purchasedRest = computed(() => topPurchased.value.slice(3, 10))
 
 const wishlistedPodium = computed(() => topWishlisted.value.slice(0, 3))
 const wishlistedRest = computed(() => topWishlisted.value.slice(3, 10))
 
+const quickViewOpen = ref(false)
+const quickProduct = ref(null)
+
+const snackbar = ref({ open: false, text: '' })
+
+const colorHexMap = {
+    Azul: '#2F6FED',
+    Rojo: '#E53935',
+    Verde: '#43A047',
+    Amarillo: '#FDD835',
+    Morado: '#8E24AA',
+    Negro: '#111111',
+    Blanco: '#FFFFFF',
+    Beige: '#D6C3A5',
+    Gris: '#9E9E9E',
+    Marrón: '#6D4C41',
+    Rosa: '#EC407A',
+}
+const colors = computed(() => Object.entries(colorHexMap).map(([name, hex]) => ({ name, hex })))
+
+function openQuickView(p) {
+    quickProduct.value = p
+    quickViewOpen.value = true
+}
+
+function onAddToCart(payload) {
+    cart.addToCart(payload)
+    snackbar.value.text = `Añadido: ${payload.product?.name} (x${payload.qty})`
+    snackbar.value.open = true
+}
+
 onMounted(async () => {
-    // wishlist para corazones (si ProductCard depende del store)
+    // Para pintar corazones si estás logueado
     try { await wishlist.fetchWishlist() } catch (_) { }
 
     try {
@@ -178,9 +209,7 @@ onMounted(async () => {
 })
 </script>
 
-
 <style scoped>
-/* --- Podio (lo tuyo) --- */
 .podium {
     margin-top: 8px;
 }
@@ -219,12 +248,10 @@ onMounted(async () => {
     box-shadow: 0 10px 20px rgba(0, 0, 0, 0.12);
 }
 
-/* --- Resto (grid con ranking) --- */
 .rank-wrap {
     position: relative;
 }
 
-/* badge elegante tipo “ranking” */
 .rank-badge {
     position: absolute;
     top: -10px;
@@ -241,7 +268,6 @@ onMounted(async () => {
     box-shadow: 0 10px 20px rgba(0, 0, 0, 0.12);
 }
 
-/* un poquito de “premium feel” en el grid */
 .rank-card {
     transition: transform 140ms ease, box-shadow 140ms ease;
 }
@@ -250,37 +276,30 @@ onMounted(async () => {
     transform: translateY(-2px);
 }
 
-/* --- Medallas podio (wrap alrededor del ProductCard) --- */
 .medal {
     border-radius: 24px;
-    /* redondeo para que acompañe a la card */
     padding: 10px;
-    /* “marco” */
     position: relative;
 }
 
-/* Dorado */
 .medal.gold {
     background: linear-gradient(135deg, rgba(255, 215, 0, 0.35), rgba(255, 215, 0, 0.08));
     box-shadow: 0 18px 40px rgba(255, 215, 0, 0.12);
     border: 1px solid rgba(255, 215, 0, 0.45);
 }
 
-/* Plata */
 .medal.silver {
     background: linear-gradient(135deg, rgba(192, 192, 192, 0.38), rgba(192, 192, 192, 0.10));
     box-shadow: 0 18px 40px rgba(160, 160, 160, 0.10);
     border: 1px solid rgba(192, 192, 192, 0.55);
 }
 
-/* Bronce */
 .medal.bronze {
     background: linear-gradient(135deg, rgba(205, 127, 50, 0.35), rgba(205, 127, 50, 0.10));
     box-shadow: 0 18px 40px rgba(205, 127, 50, 0.10);
     border: 1px solid rgba(205, 127, 50, 0.55);
 }
 
-/* Badge del número: lo pintamos según la medalla */
 .medal.gold .podium-badge {
     background: rgba(255, 215, 0, 0.95);
     color: rgba(0, 0, 0, 0.85);

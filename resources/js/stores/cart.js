@@ -51,6 +51,7 @@ function saveCart(key, items) {
 // =============================
 const availabilityCache = new Map() // productId -> { ts, data }
 const AV_CACHE_MS = 10_000
+const availabilityInflight = new Map() // productId -> Promise
 
 async function fetchAvailabilityCached(productId) {
     const pid = Number(productId)
@@ -60,9 +61,20 @@ async function fetchAvailabilityCached(productId) {
     const hit = availabilityCache.get(pid)
     if (hit && (now - hit.ts) < AV_CACHE_MS) return hit.data
 
-    const { data } = await axios.get(`/api/products/${pid}/availability`)
-    availabilityCache.set(pid, { ts: now, data })
-    return data
+    const inflight = availabilityInflight.get(pid)
+    if (inflight) return inflight
+
+    const p = axios.get(`/api/products/${pid}/availability`)
+        .then(({ data }) => {
+            availabilityCache.set(pid, { ts: Date.now(), data })
+            return data
+        })
+        .finally(() => {
+            availabilityInflight.delete(pid)
+        })
+
+    availabilityInflight.set(pid, p)
+    return p
 }
 
 async function clampToAvailability(productId, desiredQty) {
@@ -421,7 +433,6 @@ export const useCartStore = defineStore('cart', {
         },
 
         async refreshAvailabilityForCart() {
-            // productos únicos del carrito
             const pids = Array.from(new Set(
                 (this.items ?? [])
                     .map(it => Number(it?.product?.id ?? it?.product_id ?? null))
@@ -433,15 +444,32 @@ export const useCartStore = defineStore('cart', {
             const now = Date.now()
             const next = { ...this.availabilityByProductId }
 
-            // usamos tu fetchAvailabilityCached (ya existe arriba)
-            await Promise.all(pids.map(async (pid) => {
-                try {
-                    const a = await fetchAvailabilityCached(pid)
-                    next[pid] = { available: Number(a?.available ?? 0), ts: now }
-                } catch {
-                    // si falla, no lo rompemos; dejamos lo anterior
+            // ✅ Solo pedimos availability si NO lo tenemos fresco ya (10s)
+            const toFetch = pids.filter(pid => {
+                const existing = next[pid]
+                if (!existing) return true
+                return (now - Number(existing.ts ?? 0)) > AV_CACHE_MS
+            })
+
+            if (toFetch.length === 0) return
+
+            // ✅ Concurrencia limitada
+            const limit = 4
+            let idx = 0
+
+            const worker = async () => {
+                while (idx < toFetch.length) {
+                    const pid = toFetch[idx++]
+                    try {
+                        const a = await fetchAvailabilityCached(pid)
+                        next[pid] = { available: Number(a?.available ?? 0), ts: Date.now() }
+                    } catch {
+                        // no rompemos nada
+                    }
                 }
-            }))
+            }
+
+            await Promise.all(Array.from({ length: Math.min(limit, toFetch.length) }, worker))
 
             this.availabilityByProductId = next
         },

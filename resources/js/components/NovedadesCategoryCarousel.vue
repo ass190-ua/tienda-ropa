@@ -24,18 +24,31 @@
 
         <!-- OK: carrusel real -->
         <div v-else class="carousel-wrap">
-            <Swiper :modules="modules" :slides-per-view="1.2" :space-between="16" :breakpoints="breakpoints"
-                :navigation="true" :loop="shouldLoop" :autoplay="{
-                    delay: autoplayDelay,
-                    disableOnInteraction: false,
-                    pauseOnMouseEnter: true
-                }">
-                <SwiperSlide v-for="p in products" :key="p.id">
-                    <ProductCard :product="p" @quick-view="openQuickView" />
-                </SwiperSlide>
-            </Swiper>
+            <div class="carousel-shell">
+                <v-btn class="nav-btn nav-prev" icon="mdi-chevron-left" variant="flat" @click="swiperRef?.slidePrev()"
+                    :disabled="!canPrev" />
+                <Swiper @swiper="onSwiper" @slideChange="syncNav" :modules="modules" :slides-per-view="1"
+                    :space-between="18" :breakpoints="breakpoints" :navigation="false" :watch-overflow="true"
+                    :loop="shouldLoop" :speed="550" :autoplay="{
+                        delay: autoplayDelay,
+                        disableOnInteraction: false,
+                        pauseOnMouseEnter: true
+                    }">
+                    <SwiperSlide v-for="p in products" :key="p.id">
+                        <ProductCard :product="p" @quick-view="openQuickView" />
+                    </SwiperSlide>
+                </Swiper>
+                <v-btn class="nav-btn nav-next" icon="mdi-chevron-right" variant="flat" @click="swiperRef?.slideNext()"
+                    :disabled="!canNext" />
+            </div>
         </div>
-        <VistaRapidaDialog v-model="quickViewOpen" :product="quickViewProduct" :colors-palette="colors" />
+        <VistaRapidaDialog v-model="quickViewOpen" :product="quickViewProduct" :colors-palette="colors"
+            :syncing="cart.syncing" @add="onAddToCart" />
+
+        <v-snackbar v-model="snackbar.open" :timeout="2500" :color="snackbar.color" rounded="lg">
+            {{ snackbar.text }}
+        </v-snackbar>
+
     </section>
 </template>
 
@@ -43,6 +56,7 @@
 import { ref, computed, onMounted, watch } from "vue";
 import axios from "axios";
 import { useWishlistStore } from "@/stores/wishlist";
+import { useCartStore } from "../stores/cart";
 import { Swiper, SwiperSlide } from "swiper/vue";
 import { Navigation, Autoplay } from "swiper/modules";
 import VistaRapidaDialog from "@/components/VistaRapidaDialog.vue";
@@ -61,6 +75,7 @@ const props = defineProps({
 
 const modules = [Navigation, Autoplay];
 const wishlist = useWishlistStore();
+const cart = useCartStore();
 
 const products = ref([]);
 const loading = ref(false);
@@ -68,6 +83,12 @@ const error = ref(false);
 
 const quickViewOpen = ref(false);
 const quickViewProduct = ref(null);
+
+const snackbar = ref({ open: false, text: '', color: 'success' })
+
+const swiperRef = ref(null)
+const canPrev = ref(false)
+const canNext = ref(true)
 
 function openQuickView(p) {
     quickViewProduct.value = p;
@@ -91,25 +112,57 @@ const colors = computed(() =>
     Object.entries(colorHexMap).map(([name, hex]) => ({ name, hex }))
 )
 
-
 const breakpoints = {
-    600: { slidesPerView: 2.2, spaceBetween: 16 },
-    960: { slidesPerView: 3.2, spaceBetween: 18 },
-    1280: { slidesPerView: 4.2, spaceBetween: 18 },
-    1600: { slidesPerView: 5.2, spaceBetween: 18 },
+    600: { slidesPerView: 2, spaceBetween: 18 },
+    960: { slidesPerView: 3, spaceBetween: 18 },
+    1280: { slidesPerView: 4, spaceBetween: 18 },
+    1600: { slidesPerView: 5, spaceBetween: 18 },
 };
 
-// Para que loop no haga cosas raras si hay pocos productos:
 const shouldLoop = computed(() => products.value.length >= 6);
 
-function productImage(p) {
-    const img = Array.isArray(p?.images) ? p.images[0] : null;
-    return img?.url ?? img?.path ?? img?.src ?? img?.image_url ?? null;
+function onSwiper(swiper) {
+    swiperRef.value = swiper
+    syncNav(swiper)
 }
 
-function formatPrice(price) {
-    if (price === null || price === undefined) return "";
-    return `${Number(price).toFixed(2)} €`;
+function syncNav(swiper) {
+    // Si loop está activo, siempre "puede"
+    if (shouldLoop.value) {
+        canPrev.value = true
+        canNext.value = true
+        return
+    }
+    canPrev.value = !swiper.isBeginning
+    canNext.value = !swiper.isEnd
+}
+
+async function onAddToCart(payload) {
+    try {
+        await cart.addToCart(payload)
+
+        if (cart.stockWarning?.message) {
+            snackbar.value.text = cart.stockWarning.message
+            snackbar.value.color = 'warning'
+            snackbar.value.open = true
+            cart.clearStockWarning?.()
+            return
+        }
+
+        snackbar.value.text = `Añadido: ${payload.product?.name} (x${payload.qty})`
+        snackbar.value.color = 'success'
+        snackbar.value.open = true
+
+        quickViewOpen.value = false
+    } catch (e) {
+        snackbar.value.text =
+            e?.response?.data?.message ||
+            e?.response?.data?.error ||
+            e?.message ||
+            'No se pudo añadir al carrito.'
+        snackbar.value.color = 'error'
+        snackbar.value.open = true
+    }
 }
 
 async function fetchProducts() {
@@ -168,14 +221,63 @@ async function toggleWishlistGroup(p) {
 }
 
 
-
 onMounted(fetchProducts);
+
 watch(() => [props.categoryId, props.limit], fetchProducts);
 </script>
 
 <style scoped>
 .carousel-wrap {
     position: relative;
+}
+
+.carousel-wrap :deep(.swiper-slide) {
+    height: auto;
+    display: flex;
+}
+
+.carousel-wrap :deep(.swiper-slide > *) {
+    width: 100%;
+}
+
+.carousel-shell :deep(.swiper) {
+    padding: 6px 0 22px;
+    /* ya no necesitamos padding lateral por flechas */
+    overflow: visible;
+}
+
+.nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+
+    width: 42px;
+    height: 42px;
+    border-radius: 999px;
+
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(0, 0, 0, 0.10);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+
+    transition: transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
+}
+
+.nav-btn:hover {
+    transform: translateY(-50%) scale(1.04);
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.16);
+}
+
+.nav-prev {
+    left: 10px;
+}
+
+.nav-next {
+    right: 10px;
+}
+
+.nav-btn:disabled {
+    opacity: 0.35;
 }
 
 .card-link {
@@ -217,7 +319,6 @@ watch(() => [props.categoryId, props.limit], fetchProducts);
     min-height: 2.4rem;
     /* 2 líneas */
     display: -webkit-box;
-    -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }

@@ -62,6 +62,13 @@ export const useAuthStore = defineStore('auth', {
             const cart = useCartStore()
             cart.setOwner(null)
             window.location.href = '/login' // Recarga limpia para borrar cookies
-        }
+        },
+
+        async updateProfile(payload) {
+            await axios.get('/sanctum/csrf-cookie')
+            const { data } = await axios.put('/api/user', payload)
+            this.user = data
+            return data
+        },
     }
 })

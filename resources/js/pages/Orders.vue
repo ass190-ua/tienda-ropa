@@ -42,7 +42,7 @@
         <!-- Empty state -->
         <v-fade-transition mode="out-in">
             <!-- LOADING -->
-            <div v-if="loading" key="loading">
+            <div v-if="loading || !loadedOnce" key="loading">
                 <v-card rounded="xl" class="pa-6 premium-surface">
                     <div class="d-flex align-center justify-space-between mb-4">
                         <div class="text-subtitle-1 font-weight-bold">Cargando pedidos…</div>
@@ -268,7 +268,9 @@
                         <div class="lines-list">
                             <div v-for="(l, i) in selected.lines" :key="`${l.product_id}-${i}`" class="line-row">
                                 <div class="d-flex align-center ga-3">
-                                    <v-avatar rounded="lg" size="44" class="bg-grey-lighten-4">
+                                    <v-avatar rounded="lg" size="44" class="bg-grey-lighten-4" role="button"
+                                        tabindex="0" style="cursor:pointer" @click="goToProductFromLine(l)"
+                                        @keydown.enter.prevent="goToProductFromLine(l)">
                                         <v-img v-if="lineImage(l)" :src="lineImage(l)" cover />
                                         <v-icon v-else icon="mdi-tshirt-crew-outline" />
                                     </v-avatar>
@@ -334,7 +336,8 @@ const statusOptions = [
 const hasAnyOrders = computed(() => orders.value.length > 0)
 
 const orders = ref([])
-const loading = ref(false)
+const loading = ref(true)
+const loadedOnce = ref(false)
 const loadError = ref('')
 
 const page = ref(1)
@@ -459,6 +462,7 @@ async function reload() {
         console.error(e)
     } finally {
         loading.value = false
+        loadedOnce.value = true
     }
 }
 
@@ -485,25 +489,56 @@ function money(n, currency = 'EUR') {
     }).format(v)
 }
 
+function normalizeImgUrl(u) {
+    if (!u) return null
+    const s = String(u)
+
+    // ya es absoluta
+    if (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('//')) return s
+
+    // ya es ruta absoluta del dominio
+    if (s.startsWith('/')) return s
+
+    // casos típicos: "images/..." o "storage/..."
+    if (s.startsWith('images/')) return '/' + s
+    if (s.startsWith('storage/')) return '/' + s
+
+    // si por lo que sea viene sin "images/" pero sabes que está en /public/images
+    // (ajusta o elimina esta línea si no aplica)
+    // return '/images/' + s
+
+    // fallback: lo intentamos como ruta del site
+    return '/' + s
+}
+
 function pickImageUrl(x) {
     if (!x) return null
-    if (typeof x === 'string') return x
-    return x.url ?? x.path ?? x.src ?? x.image_url ?? x.image ?? null
+    if (typeof x === 'string') return normalizeImgUrl(x)
+
+    const raw =
+        x.url ??
+        x.path ??
+        x.src ??
+        x.image_url ??
+        x.image ??
+        null
+
+    return normalizeImgUrl(raw)
 }
 
 function lineImage(l) {
-    // 1) Si el backend ya trae una imagen directa en la línea
+    // 1) imagen directa en la línea
     const direct = l?.image_path ?? l?.image_url ?? l?.image ?? null
-    if (direct) return direct
+    const directUrl = normalizeImgUrl(direct)
+    if (directUrl) return directUrl
 
-    // 2) Si viene el product embebido con images
+    // 2) product embebido con images
     const p = l?.product ?? null
     const imgs = Array.isArray(p?.images) ? p.images : []
     const first = imgs[0]
     const u = pickImageUrl(first)
     if (u) return u
 
-    // 3) Fallback: nada
     return null
 }
 
@@ -526,9 +561,61 @@ function lineColor(l) {
     return valueOf(l?.color ?? l?.color_value ?? l?.color_name)
 }
 
-function openDetails(o) {
+async function openDetails(o) {
     selected.value = o
     detailsOpen.value = true
+    await hydrateSelectedLines()
+}
+
+async function hydrateSelectedLines() {
+    if (!selected.value?.lines?.length) return
+
+    const ids = Array.from(new Set(
+        selected.value.lines
+            .map(l => Number(l?.product_id ?? l?.product?.id))
+            .filter(Boolean)
+    ))
+
+    if (ids.length === 0) return
+
+    async function doRequest() {
+        return axios.post('/api/products/variants-by-ids', { product_ids: ids })
+    }
+
+    try {
+        let res
+        try {
+            res = await doRequest()
+        } catch (e) {
+            if (e?.response?.status === 419) {
+                await axios.get('/sanctum/csrf-cookie')
+                res = await doRequest()
+            } else {
+                throw e
+            }
+        }
+
+        const arr = Array.isArray(res.data) ? res.data : []
+        const byId = Object.fromEntries(arr.map(p => [Number(p.id), p]))
+
+        selected.value = {
+            ...selected.value,
+            lines: selected.value.lines.map(l => {
+                const pid = Number(l?.product_id ?? l?.product?.id)
+                const product = byId[pid] ?? l.product ?? null
+                return { ...l, product }
+            }),
+        }
+    } catch (e) {
+        console.warn('[orders] hydrateSelectedLines error', e)
+    }
+}
+
+function goToProductFromLine(l) {
+    const pid = Number(l?.product_id ?? l?.product?.id)
+    if (!pid) return
+    detailsOpen.value = false
+    router.push(`/producto/${pid}`)
 }
 
 function goShop() {

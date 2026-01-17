@@ -3,7 +3,7 @@
         <v-container class="d-flex align-center py-0">
             <router-link to="/" class="d-flex align-center text-decoration-none mr-4">
                 <v-icon icon="mdi-feather" color="primary" size="large" class="mr-2" />
-                <span class="text-h6 font-weight-bold text-black">TiendaModa</span>
+                <span class="text-h6 font-weight-bold text-black">BeUrban</span>
             </router-link>
 
             <div class="d-none d-md-flex ml-4 gap-4">

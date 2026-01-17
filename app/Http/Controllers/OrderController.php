@@ -86,7 +86,7 @@ class OrderController extends Controller
                         'name' => $p?->name,
 
                         'image_path' => $firstImg
-                            ? ($firstImg->url ?? ($firstImg->path ? Storage::url($firstImg->path) : null))
+                            ? ($firstImg->url ?? ($firstImg->path ? ('/' . ltrim($firstImg->path, '/')) : null))
                             : null,
 
                         'quantity' => (int) $l->quantity,

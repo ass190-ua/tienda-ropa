@@ -34,6 +34,7 @@ use App\Http\Controllers\NewsletterController;
 
 // Productos
 Route::get('/products/home', [ProductController::class, 'homeProducts']);
+Route::get('/products/home-grouped', [ProductController::class, 'homeGroupedProducts']);
 Route::get('/products/featured', [ProductController::class, 'featuredProducts']);
 Route::get('/products', [ProductController::class, 'index']);
 Route::get('products/filters', [ProductController::class, 'filters']);
@@ -82,16 +83,9 @@ Route::middleware(['web', 'auth'])->group(function () {
         return $request->user();
     });
 
-    Route::put('/user', function (Request $request) {
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-        ]);
+    Route::put('/user', [AuthController::class, 'updateProfile']);
 
-        $user = $request->user();
-        $user->update($data);
-
-        return response()->json($user->fresh());
-    });
+    Route::delete('/me', [AuthController::class, 'destroyMe']);
 
     // Direcciones del usuario autenticado
     Route::get('/addresses/me', [AddressController::class, 'me']);
@@ -324,8 +318,8 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
         // Calculamos los ingresos (Solo de pedidos válidos/cobrados)
         // Usamos ->get() y ->sum('total') para usar el atributo calculado en el Modelo
         $revenue = \App\Models\Order::whereIn('status', $validStatuses)
-                    ->get()
-                    ->sum('total');
+            ->get()
+            ->sum('total');
 
         return response()->json([
             'users_count' => \App\Models\User::count(),

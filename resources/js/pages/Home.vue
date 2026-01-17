@@ -20,7 +20,7 @@
             <v-row class="mb-12">
                 <v-col cols="12" md="4" v-for="cat in categories" :key="cat.title">
                     <v-card hover class="mx-auto rounded-lg overflow-hidden position-relative" height="250"
-                        @click="$router.push('/shop')">
+                        :to="{ path: '/shop', query: catQuery(cat.title) }">
                         <v-img :src="cat.image" cover height="100%" class="align-end zoom-effect">
                             <v-card-title class="text-white bg-gradient text-h5 font-weight-bold">
                                 {{ cat.title }}
@@ -30,28 +30,10 @@
                 </v-col>
             </v-row>
 
-            <div class="d-flex align-center justify-space-between mb-6">
-                <h2 class="text-h4 font-weight-bold">Últimas Novedades</h2>
-                <v-btn variant="text" color="primary" to="/shop" append-icon="mdi-arrow-right">
-                    Ver todo
-                </v-btn>
-            </div>
-
-            <v-row v-if="loading">
-                <v-col v-for="n in 4" :key="n" cols="12" sm="6" md="3">
-                    <v-skeleton-loader type="card, article"></v-skeleton-loader>
-                </v-col>
-            </v-row>
-
-            <v-row class="gy-6">
-                <v-col v-for="p in products" :key="p.id" cols="12" sm="6" lg="4">
-                    <ProductCard :product="p" />
-                </v-col>
-            </v-row>
-
+            <HomeNovedadesCarousel title="Últimas Novedades" :limit="12" />
         </v-container>
 
-        <v-sheet color="grey-lighten-4" class="py-12 mt-6">
+        <v-sheet color="grey-lighten-4" class="py-12">
             <v-container class="text-center">
                 <v-icon icon="mdi-email-outline" size="50" class="mb-4" color="primary"></v-icon>
                 <h3 class="text-h4 font-weight-bold mb-2">Únete a nuestra Newsletter</h3>
@@ -95,6 +77,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import ProductCard from '../components/ProductCard.vue'
+import HomeNovedadesCarousel from '../components/HomeNovedadesCarousel.vue'
 import axios from 'axios'
 
 // --- ESTADO PRODUCTOS ---
@@ -123,11 +106,16 @@ const slides = [
 
 const categories = [
     { title: 'Mujer', image: 'https://images.unsplash.com/photo-1525845859779-54d477ff291f?q=80&w=600&auto=format&fit=crop' },
-    { title: 'Hombre', image: 'https://images.unsplash.com/photo-1516257984-b1b4d8c9230c?q=80&w=600&auto=format&fit=crop' },
-    { title: 'Accesorios', image: 'https://images.unsplash.com/photo-1576053139778-7e32f2ae3cfd?q=80&w=600&auto=format&fit=crop' }
+    { title: 'Hombre', image: 'https://plus.unsplash.com/premium_photo-1673125287363-b4e837f1215f?q=80&w=687&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D' },
+    { title: 'Zapatos', image: 'https://plus.unsplash.com/premium_photo-1682435561654-20d84cef00eb?q=80&w=1018&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D' }
 ]
 
-// --- LÓGICA ---
+function catQuery(title) {
+    if (title === 'Mujer') return { category: 'Mujer' }
+    if (title === 'Hombre') return { category: 'Hombre' }
+    if (title === 'Zapatos') return { category: 'Zapatos' }
+    return {}
+}
 
 async function fetchHomeProducts() {
     try {
@@ -167,12 +155,85 @@ async function onSubscribe() {
     }
 }
 
+function productImage(p) {
+    const imgs = Array.isArray(p?.images) ? p.images : []
+    const first = imgs[0]
+
+    const url =
+        first?.url ?? first?.path ?? first?.src ??
+        p?.image ?? p?.image_url ?? null
+
+    return url || `https://picsum.photos/seed/tiendamoda-home-${p?.id ?? 'x'}/800/700`
+}
+
+function productTo(p) {
+    return `/product/${p?.id}`
+}
+
 onMounted(() => {
-  fetchHomeProducts()
+    fetchHomeProducts()
 })
 </script>
 
 <style scoped>
+.home-slide {
+    width: 320px;
+    /* ancho fijo elegante */
+}
+
+.home-product-card {
+    overflow: hidden;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.home-product-card:hover {
+    transform: translateY(-4px);
+}
+
+.home-img-wrap {
+    position: relative;
+}
+
+.home-img {
+    border-bottom-left-radius: 18px;
+    border-bottom-right-radius: 18px;
+}
+
+.home-img-gradient {
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 70%;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
+    pointer-events: none;
+}
+
+.home-badge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+}
+
+.home-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.home-overlay.show {
+    opacity: 1;
+}
+
+.home-title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
 /* Efecto de oscurecimiento para leer texto sobre imagen */
 .bg-black-opacity {
     background: rgba(0, 0, 0, 0.4);

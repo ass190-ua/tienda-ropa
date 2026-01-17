@@ -285,6 +285,8 @@ const contextTitle = computed(() => {
     const cat = routeCategory.value
     if (!cat) return 'Tienda'
 
+    if (cat === 'Zapatos') return 'Zapatos'
+
     if (deptLower[cat]) return `Tienda de ${deptLower[cat]}`
 
     if (cat.startsWith('Zapatos ')) {

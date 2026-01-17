@@ -20,7 +20,7 @@ class Cart extends Model
 
     public function items()
     {
-        return $this->hasMany(CartItem::class);
+        return $this->hasMany(CartItem::class)->orderBy('id', 'asc');
     }
 }
 
@@ -40,7 +40,7 @@ class CartItem extends Model
         'unit_price' => 'decimal:2',
         'line_total' => 'decimal:2',
     ];
-    
+
     public function cart()
     {
         return $this->belongsTo(Cart::class);

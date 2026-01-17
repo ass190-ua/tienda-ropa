@@ -80,7 +80,6 @@
                             <h2 class="text-h6 font-weight-bold mb-2">Sugerencia</h2>
                             <p class="text-body-2 text-medium-emphasis mb-0">
                                 Si estás reportando un error, indica qué estabas haciendo y en qué página ocurrió.
-                                Si puedes, añade capturas o pasos para reproducirlo.
                             </p>
                         </v-card>
                     </v-col>

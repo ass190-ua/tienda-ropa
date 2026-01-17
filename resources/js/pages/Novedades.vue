@@ -1,5 +1,5 @@
 <template>
-    <v-container class="py-6">
+    <v-container class="py-6" fluid>
         <NovedadesCategoryCarousel title="Mujer" :category-id="39" :limit="12" />
         <NovedadesCategoryCarousel title="Hombre" :category-id="40" :limit="12" />
         <NovedadesCategoryCarousel title="Zapatos Mujer" :category-id="43" :limit="12" />
@@ -10,7 +10,7 @@
 <script setup>
 import { onMounted } from "vue";
 import NovedadesCategoryCarousel from "../components/NovedadesCategoryCarousel.vue";
-import { useWishlistStore } from "@/stores/wishlist";
+import { useWishlistStore } from "../stores/wishlist";
 
 const wishlist = useWishlistStore();
 onMounted(async () => {
