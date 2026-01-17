@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
 
 /*
 |--------------------------------------------------------------------------
@@ -29,4 +30,20 @@ Route::get('/checkout/callback', function (Request $request) {
         'status' => $request->query('status'),
         'all' => $request->query(),
     ]);
+});
+
+Route::get('/test-mail', function () {
+    try {
+        $config = config('mail');
+        echo "Intentando enviar con: " . $config['mailers']['smtp']['transport'] . " // " . $config['mailers']['smtp']['host'] . ":" . $config['mailers']['smtp']['port'] . " // " . $config['mailers']['smtp']['encryption'] . "<br>";
+
+        Mail::raw('Esta es una prueba de conexión desde Render.', function ($msg) {
+            $msg->to('tiendamoda.ua@gmail.com')
+                ->subject('Prueba de Conexión Render');
+        });
+
+        return '<h1>¡ÉXITO! El correo se ha enviado. El problema era la caché.</h1>';
+    } catch (\Exception $e) {
+        return '<h1>ERROR DETECTADO:</h1><pre>' . $e->getMessage() . '</pre>';
+    }
 });
