@@ -36,18 +36,14 @@ class NewsletterController extends Controller
         try {
             $apiKey = config('services.brevo.key') ?? env('BREVO_KEY');
 
-            $htmlContent = "
-                <div style='font-family: Arial, sans-serif; color: #333;'>
-                    <h1>¡Bienvenido a Be Urban!</h1>
-                    <p>Gracias por suscribirte a nuestra newsletter.</p>
-                    <p>Aquí tienes tu regalo de bienvenida:</p>
-                    <div style='background: #fdf2f8; padding: 20px; text-align: center; border: 2px dashed #db2777; margin: 20px 0;'>
-                        <h2 style='color: #db2777; margin: 0;'>{$coupon->code}</h2>
-                        <p style='margin-top: 5px;'>Usa este código para obtener un <strong>{$coupon->discount_value}% de descuento</strong>.</p>
-                    </div>
-                    <p>¡Esperamos verte pronto!</p>
-                </div>
-            ";
+            // --- AQUÍ ESTÁ LA MAGIA ---
+            // Usamos view(...)->render() para convertir el archivo blade en texto HTML
+            $htmlContent = view('emails.welcome', [
+                'couponCode' => $coupon->code,
+                'discount'   => $coupon->discount_value,
+                'minTotal'   => $coupon->min_order_total ?? 0
+            ])->render();
+            // --------------------------
 
             Http::withHeaders([
                 'api-key' => $apiKey,
@@ -55,13 +51,12 @@ class NewsletterController extends Controller
                 'Accept' => 'application/json',
             ])->post('https://api.brevo.com/v3/smtp/email', [
                 'sender' => ['name' => 'Be Urban', 'email' => 'tiendamoda.ua@gmail.com'],
-                'to' => [['email' => $request->email]], // Se envía al usuario
-                'subject' => '¡Tu cupón de bienvenida!',
-                'htmlContent' => $htmlContent
+                'to' => [['email' => $request->email]],
+                'subject' => '¡Bienvenido a Be Urban! Tu regalo dentro 🎁',
+                'htmlContent' => $htmlContent // Le pasamos el HTML bonito generado arriba
             ]);
 
         } catch (\Exception $e) {
-            // Si falla el correo, no bloqueamos el registro, solo lo anotamos
             \Illuminate\Support\Facades\Log::error('Error Brevo Newsletter: ' . $e->getMessage());
         }
 
