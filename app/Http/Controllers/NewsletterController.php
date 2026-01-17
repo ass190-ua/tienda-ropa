@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Subscriber;
+use App\Models\Coupon;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\WelcomeNewsletter;
 use Illuminate\Support\Facades\Http;
+use App\Http\Controllers\Controller;
 
 class NewsletterController extends Controller
 {
