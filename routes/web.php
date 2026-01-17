@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Http;
 
 /*
 |--------------------------------------------------------------------------
@@ -16,18 +17,28 @@ use Illuminate\Support\Facades\Mail;
 */
 
 Route::get('/test-mail', function () {
-    try {
-        $config = config('mail');
-        echo "Intentando enviar con: " . $config['mailers']['smtp']['transport'] . " // " . $config['mailers']['smtp']['host'] . ":" . $config['mailers']['smtp']['port'] . " // " . $config['mailers']['smtp']['encryption'] . "<br>";
+    $apiKey = config('services.brevo.key');
 
-        Mail::raw('Esta es una prueba de conexión desde Render.', function ($msg) {
-            $msg->to('tiendamoda.ua@gmail.com')
-                ->subject('Prueba de Conexión Render');
-        });
+    if (!$apiKey) {
+        return 'ERROR: No se encuentra la clave BREVO_KEY en config/services.php';
+    }
 
-        return '<h1>¡ÉXITO! El correo se ha enviado. El problema era la caché.</h1>';
-    } catch (\Exception $e) {
-        return '<h1>ERROR DETECTADO:</h1><pre>' . $e->getMessage() . '</pre>';
+    // Llamada directa a la API de Brevo (sin drivers de Laravel)
+    $response = Http::withHeaders([
+        'api-key' => $apiKey,
+        'Content-Type' => 'application/json',
+        'Accept' => 'application/json',
+    ])->post('https://api.brevo.com/v3/smtp/email', [
+        'sender' => ['name' => 'TiendaModa', 'email' => 'tiendamoda.ua@gmail.com'],
+        'to' => [['email' => 'tiendamoda.ua@gmail.com']], // Se envía a ti mismo
+        'subject' => 'Prueba API Directa Render',
+        'htmlContent' => '<html><body><h1>¡Funciona!</h1><p>Enviado vía API HTTP directa.</p></body></html>'
+    ]);
+
+    if ($response->successful()) {
+        return '<h1>¡ÉXITO TOTAL! (API Directa)</h1><p>Correo enviado correctamente saltándose el driver.</p>';
+    } else {
+        return '<h1>ERROR API:</h1><pre>' . $response->body() . '</pre>';
     }
 });
 
