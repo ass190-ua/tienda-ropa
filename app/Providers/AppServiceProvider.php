@@ -31,5 +31,15 @@ class AppServiceProvider extends ServiceProvider
 
             return $frontendUrl . '/reset-password?token=' . $token . '&email=' . urlencode($user->email);
         });
+
+        Mail::extend('brevo', function () {
+            return (new BrevoTransportFactory)->create(
+                new Dsn(
+                    'brevo+api', // Usamos API (puerto 443) para evitar bloqueo de Render
+                    'default',
+                    config('services.brevo.key') // La clave que pusimos en config/services.php
+                )
+            );
+        });
     }
 }
