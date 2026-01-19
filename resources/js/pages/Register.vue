@@ -9,7 +9,7 @@
                             <div class="left-panel">
                                 <div class="brand">
                                     <v-icon icon="mdi-feather" size="22" class="mr-2" />
-                                    <span class="brand-text">TiendaModa</span>
+                                    <span class="brand-text">Be Urban</span>
                                 </div>
 
                                 <h2 class="headline">Crea tu cuenta</h2>
@@ -46,7 +46,7 @@
                             <div class="right-panel">
                                 <div class="d-flex d-md-none align-center mb-6">
                                     <v-icon icon="mdi-feather" size="22" class="mr-2" />
-                                    <span class="text-h6 font-weight-bold">TiendaModa</span>
+                                    <span class="text-h6 font-weight-bold">Be Urban</span>
                                 </div>
 
                                 <div class="mb-2">
