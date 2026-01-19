@@ -7,7 +7,7 @@
                 </v-chip>
 
                 <h1 class="text-h3 text-md-h2 font-weight-black mb-3">
-                    TiendaModa
+                    Be Urban
                 </h1>
 
                 <p class="text-body-1 text-medium-emphasis mb-8">
